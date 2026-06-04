@@ -38,7 +38,7 @@ class ChessEnvironment(gym.Env):
         self.board = chess.Board.from_chess960_pos(pos_seed())
         self.game_over = False
         
-        return self.board, {}
+        return None
     
     def step(self):
         # Take the next step, making a move, returning new state/ reward.
