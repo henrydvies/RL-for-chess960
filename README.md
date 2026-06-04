@@ -27,3 +27,5 @@
 1. GUI to play against the agent
  - python-chess has this built in i believe.
 2. Could do website too? flask? 
+
+
