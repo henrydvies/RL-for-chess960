@@ -13,12 +13,21 @@ class MinimaxAgent:
             chess.BISHOP: 3,
             chess.KING: 100000,
             chess.QUEEN: 8,
-            chess.ROOK: 3,
+            chess.ROOK: 5,
         }
         
     def take_turn(self, board):
-        pass
-    
+        # Determine whether to start max/ min
+        is_maximising = True if board.turn == chess.WHITE else False
+
+        # Get best move from _minimax
+        move = self._minimax(board, self.depth, is_maximising)[0]
+        
+        # Convert move to single int
+        action = (move.from_square * 64) + move.to_square
+        
+        return action
+        
     def _minimax(self, board, depth, is_maximising):
         """
         Recursively perform minimax algorithm to a defined depth
