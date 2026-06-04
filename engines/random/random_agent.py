@@ -2,7 +2,7 @@
 Engine that picks a random legal move. 
 """
 from random import choice as random_choice
-class RandomAgent():
+class RandomAgent:
     """
     Represents a random move playing chess engine. 
     """
