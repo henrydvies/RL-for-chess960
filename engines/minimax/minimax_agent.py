@@ -11,7 +11,6 @@ class MinimaxAgent:
             chess.PAWN: 1,
             chess.KNIGHT: 3,
             chess.BISHOP: 3,
-            chess.KING: 100000,
             chess.QUEEN: 8,
             chess.ROOK: 5,
         }
@@ -35,7 +34,7 @@ class MinimaxAgent:
         # Base case of depth 0, or game over
         if depth == 0:
             return [None, self._evaluate(board)]
-        if board.outcome: 
+        if board.outcome(): 
             if board.is_checkmate():
                 return [None, -np_inf if board.turn == chess.WHITE else np_inf]
             return [None, 0]
@@ -71,7 +70,7 @@ class MinimaxAgent:
         colour = {chess.WHITE: 1, chess.BLACK: -1}
         
         for _, piece in pieces:
-            value = self.piece_values[piece.piece_type]
+            value = self.piece_values.get(piece.piece_type, 0)
             colour_weight = colour[piece.color]
             
             eval_val += colour_weight * value
