@@ -1,10 +1,19 @@
 """
 Wrapper for python-chess representing the gym environment
 """
+# Dependencies
 import chess
 import gymnasium as gym
 from random import randint
 import numpy as np
+
+# Modules
+from board_representation import board_to_tensor
+
+
+def pos_seed():
+    # Random seed for chess960 setup
+    return randint(0, 959)
 
 class ChessEnvironment(gym.Env):
     """
@@ -13,8 +22,7 @@ class ChessEnvironment(gym.Env):
 
     def __init__(self):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
-        pos_seed = randint(0, 959)
-        self.board = chess.Board.from_chess960_pos(pos_seed)
+        self.board = chess.Board.from_chess960_pos(pos_seed())
         
         # Attribute to track game status
         self.game_over = False
@@ -27,7 +35,10 @@ class ChessEnvironment(gym.Env):
     
     def reset(self):
         # Reset the chess board.
-        pass
+        self.board = chess.Board.from_chess960_pos(pos_seed())
+        self.game_over = False
+        
+        return self.board, {}
     
     def step(self):
         # Take the next step, making a move, returning new state/ reward.
