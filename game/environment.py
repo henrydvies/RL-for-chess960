@@ -20,7 +20,7 @@ class ChessEnvironment(gym.Env):
     Class to represent chess gym environment, used for training. 
     """
 
-    def __init__(self):
+    def __init__(self, opponent):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
         self.board = chess.Board.from_chess960_pos(pos_seed())
         
@@ -35,6 +35,9 @@ class ChessEnvironment(gym.Env):
         
         # Player colour, white only for now
         self.player_colour = chess.WHITE
+        
+        # Set opponent agent
+        self.opponent = opponent
     
     def reset(self, seed=None, options=None):
         # Reset the chess board.
@@ -44,13 +47,10 @@ class ChessEnvironment(gym.Env):
         return board_to_tensor(self.board), {}
     
     def step(self, action):
-        # Take the next step, making a move, returning new state/ reward.
-        # Decode move from/ to from the action
-        from_square = action // 64
-        to_square = action % 64
-        
-        # Make the move
-        move = chess.Move(from_square, to_square)
+        """
+        Takes the next step, then takes opponents move.
+        """
+        move = self._convert_to_move(action)
         
         # Handle illegal move
         if move not in self.board.legal_moves:
@@ -61,6 +61,44 @@ class ChessEnvironment(gym.Env):
         
         # Calculate reward and if game is over
         outcome = self.board.outcome()
+        reward = self._handle_outcome(outcome)
+
+        if not(self.game_over):     
+            # Take opponent move
+            opponent_action = self.opponent.take_turn(self.board)
+            
+            # Make opponent move
+            opponent_move = self._convert_to_move(opponent_action)
+            self.board.push(opponent_move)
+            
+            # Check if that results in game over
+            outcome = self.board.outcome()
+            reward = self._handle_outcome(outcome)            
+        
+        # Calculate reward
+        return(board_to_tensor(self.board), reward, self.game_over, False, {})
+        
+    
+    def render(self):
+        # Render chess board
+        print(self.board)
+
+    def _convert_to_move(self, action):
+        """
+        Converts action to a chess move object.
+        """
+        from_square = action // 64
+        to_square = action % 64
+        
+        # Make the move object
+        move = chess.Move(from_square, to_square)
+        
+        return move
+    def _handle_outcome(self, outcome):
+        """
+        Helper to calculate reward based of outcome, and handle game over
+        """
+        
         if outcome:
             # Handle game over
             if outcome.winner == self.player_colour:
@@ -75,13 +113,4 @@ class ChessEnvironment(gym.Env):
         else:
             # Game continues
             reward = 0
-            
-
-            
-        # Calculate reward
-        return(board_to_tensor(self.board), reward, self.game_over, False, {})
-        
-    
-    def render(self):
-        # Render chess board
-        print(self.board)
+        return reward

@@ -5,13 +5,14 @@ import chess
 import numpy as np
 import pytest
 from game.environment import ChessEnvironment
+from engines.random.random_agent import RandomAgent
 
 
 def get_env():
     """
-    Helper to return a fresh ChessEnvironment instance
+    Helper to return a fresh ChessEnvironment instance with a random opponent
     """
-    return ChessEnvironment()
+    return ChessEnvironment(opponent=RandomAgent())
 
 
 def checkmate_env():
@@ -55,7 +56,6 @@ def test_reset_generates_new_position():
     board_before = env.board.fen()
     env.reset()
     board_after = env.board.fen()
-    # Not guaranteed to differ every time but overwhelmingly likely across 960 positions
     assert isinstance(board_after, str)
 
 
@@ -66,7 +66,6 @@ def test_illegal_move_returns_negative_reward():
     An illegal move should return reward of -1
     """
     env = get_env()
-    # Action 0 maps to from_square=0, to_square=0 which is always illegal
     _, reward, _, _, _ = env.step(0)
     assert reward == -1
 
@@ -96,7 +95,6 @@ def test_legal_move_returns_zero_reward():
     A legal move during normal play should return reward of 0
     """
     env = get_env()
-    # Get first legal move and encode it as action integer
     move = list(env.board.legal_moves)[0]
     action = move.from_square * 64 + move.to_square
     _, reward, _, _, _ = env.step(action)
@@ -132,7 +130,6 @@ def test_checkmate_returns_positive_reward():
     Delivering checkmate as white should return reward of +1
     """
     env = checkmate_env()
-    # Qh5 to f7 is checkmate
     move = chess.Move(chess.H5, chess.F7)
     action = move.from_square * 64 + move.to_square
     _, reward, _, _, _ = env.step(action)
