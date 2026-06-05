@@ -6,7 +6,7 @@ from engines.minimax.minimax_agent import MinimaxAgent
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
 
-def train(opponent, total_timesteps):
+def train(opponent, total_timesteps, model_path=None):
     """
     Run the training loop
     """
@@ -15,6 +15,11 @@ def train(opponent, total_timesteps):
     
     # Create reinforcement learning agent
     agent = rlAgent(environment)
+    
+    # Load existing model
+    if model_path:
+        agent.load(model_path)
+        agent.model.set_env(environment)
     
     # Train
     agent.train(total_timesteps)
@@ -25,4 +30,4 @@ def train(opponent, total_timesteps):
     
     
 if __name__=="__main__":
-    train(MinimaxAgent(), 120)
+    train(MinimaxAgent(depth=1), 100000)
