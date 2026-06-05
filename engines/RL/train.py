@@ -21,11 +21,12 @@ def train(opponent, total_timesteps, model_path=None):
         agent.load(model_path)
         agent.model.set_env(environment)
     
-    # Train
-    agent.train(total_timesteps)
-    
-    # Save model
-    agent.save()
+    # Train, try/ finally to ensure model save incase issue during train.
+    try:
+        agent.train(total_timesteps)
+    finally:
+        # Save model
+        agent.save()
     
     
     
