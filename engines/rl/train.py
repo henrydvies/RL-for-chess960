@@ -78,6 +78,10 @@ def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000
     for agent, timesteps in config:
         if isinstance(agent, (RandomAgent, MinimaxAgent)):
             train(agent, timesteps, model_path)
+            rl_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
+            rl_agent_instance.load(model_path)
+            elo_tracker = evaluate(rl_agent_instance, agent, n_games=20, tracker=elo_tracker)
+                
         
         if agent in [rlAgent]:
             # For self play break down into 25k timesteps in order to let model update every so often
@@ -88,7 +92,9 @@ def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000
                 # Evaluate after loop
                 rl_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
                 rl_agent_instance.load(model_path)
-                elo_tracker = evaluate(rl_agent_instance, RandomAgent(), n_games=10, tracker=elo_tracker)
+                opponent_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
+                opponent_agent_instance.load(model_path)
+                elo_tracker = evaluate(rl_agent_instance, opponent_agent_instance, n_games=20, tracker=elo_tracker)
                 
                 
             self_play_train(timesteps, model_path, use_wandb=True)
