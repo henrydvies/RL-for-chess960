@@ -45,7 +45,7 @@ class rlAgent:
         tensor_board = board_to_tensor(board)
         masks = action_masks_helper(board)
         # Get action 
-        action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0] 
+        action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0][0]
         
         return action
         
