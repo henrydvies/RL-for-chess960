@@ -2,3 +2,5 @@ python-chess
 gymnasium
 numpy
 pytest
+stable_baselines3
+torch
