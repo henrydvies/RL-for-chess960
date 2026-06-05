@@ -18,12 +18,12 @@ class rlAgent:
         )
         self.model = MaskablePPO("CnnPolicy", environment, policy_kwargs=policy_kwargs, verbose=1)
     
-    def train(self, total_timesteps):
+    def train(self, total_timesteps, callback=None):
         """
         Train model over total_timesteps iterations
         """
         # Learn for timesteps time
-        self.model.learn(total_timesteps)
+        self.model.learn(total_timesteps, callback=callback)
         
     
     def save(self, model_folder="models/rl_agent"):

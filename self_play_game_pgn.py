@@ -26,7 +26,7 @@ def play_game(white_agent, black_agent, chess960=True):
     game.headers["SetUp"] = "1"
     game.headers["White"] = white_agent.__class__.__name__
     game.headers["Black"] = black_agent.__class__.__name__
-    game.headers["Variant"] = "Chess960" if chess960 else "Standard"
+    #game.headers["Variant"] = "Chess960" if chess960 else "Standard"
     node = game
 
     move_count = 0
@@ -70,4 +70,4 @@ if __name__ == "__main__":
     rl.load("models/rl_agent")
 
     # Play against random agent
-    play_game(white_agent=rl, black_agent=RandomAgent())
+    play_game(white_agent=rl, black_agent=RandomAgent(), chess960=False)

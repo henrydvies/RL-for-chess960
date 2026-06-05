@@ -5,8 +5,10 @@ from game.environment import ChessEnvironment
 from engines.minimax.minimax_agent import MinimaxAgent
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
+from wandb.integration.sb3 import WandbCallback
+import wandb
 
-def train(opponent, total_timesteps, model_path=None):
+def train(opponent, total_timesteps, model_path=None, use_wandb=True):
     """
     Run the training loop
     """
@@ -21,14 +23,21 @@ def train(opponent, total_timesteps, model_path=None):
         agent.load(model_path)
         agent.model.set_env(environment)
     
+    callback = None
+    if use_wandb:
+        wandb.init(project="rl-chess960", sync_tensorboard=True)
+        callback = WandbCallback()
+    
     # Train, try/ finally to ensure model save incase issue during train.
     try:
-        agent.train(total_timesteps)
+        agent.train(total_timesteps, callback)
     finally:
         # Save model
         agent.save()
+        if use_wandb:
+            wandb.finish()
     
-def self_play(total_timesteps, model_path):
+def self_play(total_timesteps, model_path, use_wandb=True):
     """
     Holds self play loop
     """
@@ -47,10 +56,17 @@ def self_play(total_timesteps, model_path):
     agent.model.set_env(environment)
     opponent_agent.model.set_env(temp_environment)
     
+    callback = None
+    if use_wandb:
+        wandb.init(project="rl-chess960", sync_tensorboard=True)
+        callback = WandbCallback()
+    
     try:
-        agent.train(total_timesteps)
+        agent.train(total_timesteps, callback)
     finally:
         agent.save()
+        if use_wandb:
+            wandb.finish()
     
 if __name__=="__main__":
-    self_play(20000, "models/rl_agent")
+    self_play(10000, "models/rl_agent")
