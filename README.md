@@ -29,3 +29,5 @@
 2. Could do website too? flask? 
 
 
+*To train*
+python -m engines.rl.train

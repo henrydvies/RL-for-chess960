@@ -25,3 +25,5 @@ Thumbs.db
 *.pt
 *.pth
 *.ckpt
+
+models/

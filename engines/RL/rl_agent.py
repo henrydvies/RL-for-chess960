@@ -14,7 +14,7 @@ class rlAgent:
             features_extractor_class=PolicyNetwork,
             features_extractor_kwargs=dict(features_dim=256)
         )
-        self.model = PPO("CnnPolicy", environment, policy_kwargs=policy_kwargs)
+        self.model = PPO("CnnPolicy", environment, policy_kwargs=policy_kwargs, verbose=1)
     
     def train(self, total_timesteps):
         """
