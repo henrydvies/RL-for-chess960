@@ -41,6 +41,8 @@ class EloTracker:
         Helper to use elo formula: 
         E = 1 / (1 + 10^((opponent_rating - your_rating) / 400))
         Actual is Win: 1, Draw: 0.5, Loss: 0
+        
+        new elo = old + k * (actual score - expected score)
         """
         k = 32
         expected_score = 1 / (1 + 10**((opponent_rating - agent_rating) / 400))

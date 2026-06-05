@@ -1,0 +1,5 @@
+{
+    "RandomAgent": 200,
+    "MinimaxAgent": 400,
+    "rlAgent": 600
+}

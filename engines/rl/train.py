@@ -6,6 +6,8 @@ from engines.minimax.minimax_agent import MinimaxAgent
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
 from wandb.integration.sb3 import WandbCallback
+from evaluation.elo_tracker import EloTracker
+from evaluation.evaluator import evaluate
 import wandb
 
 def train(opponent, total_timesteps, model_path=None, use_wandb=True):
@@ -37,7 +39,7 @@ def train(opponent, total_timesteps, model_path=None, use_wandb=True):
         if use_wandb:
             wandb.finish()
     
-def self_play(total_timesteps, model_path, use_wandb=True):
+def self_play_train(total_timesteps, model_path, use_wandb=True):
     """
     Holds self play loop
     """
@@ -67,9 +69,36 @@ def self_play(total_timesteps, model_path, use_wandb=True):
         agent.save()
         if use_wandb:
             wandb.finish()
+
+def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000)], model_path="models/rl_agent"):
+    """
+    Handle the training loop, along with evaluation.
+    """
+    elo_tracker = EloTracker()
+    for agent, timesteps in config:
+        if isinstance(agent, (RandomAgent, MinimaxAgent)):
+            train(agent, timesteps, model_path)
+        
+        if agent in [rlAgent]:
+            # For self play break down into 25k timesteps in order to let model update every so often
+            while timesteps > 25000:
+                self_play_train(25000, model_path, use_wandb=True)
+                timesteps -= 25000
+                
+                # Evaluate after loop
+                rl_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
+                rl_agent_instance.load(model_path)
+                elo_tracker = evaluate(rl_agent_instance, RandomAgent(), n_games=10, tracker=elo_tracker)
+                
+                
+            self_play_train(timesteps, model_path, use_wandb=True)
+        elo_tracker.save()
+    
     
 if __name__=="__main__":
-    train(RandomAgent(), 5000, use_wandb=True)
-    train(MinimaxAgent(depth=2), 50000, model_path="models/rl_agent",  use_wandb=True)
-    for _ in range(0,100):
-        self_play(10000, model_path="models/rl_agent", use_wandb=True)
+    config = [
+        (RandomAgent(), 200),
+        (MinimaxAgent(depth=3), 1000),
+        (rlAgent, 100000)
+    ]
+    handle_training(config=config)
