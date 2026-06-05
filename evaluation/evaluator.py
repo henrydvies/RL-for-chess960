@@ -60,6 +60,7 @@ def evaluate(rl_agent, opponent, n_games=20, tracker=None):
 
     for _ in range(n_games):
         result = play_single_game(rl_agent, opponent)
+        print(f"Game result: {result}")
         # Update Elo in memory
         tracker.update(rl_name, opponent_name, result)
         if result is True:

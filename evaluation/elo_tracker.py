@@ -7,7 +7,7 @@ class EloTracker:
     """
     Represents the elo tracker
     """
-    def __init__(self, elo_map=None,elo_tracking_path="elo_tracking/elo_tracker.json"):
+    def __init__(self, elo_map=None,elo_tracking_path="evaluation/elo_tracking/elo_tracker.json"):
         self.elo_map = elo_map
         self.elo_tracking_path = elo_tracking_path
         # If elo data present use it.

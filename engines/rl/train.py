@@ -70,14 +70,14 @@ def self_play_train(total_timesteps, model_path, use_wandb=True):
         if use_wandb:
             wandb.finish()
 
-def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000)], model_path="models/rl_agent"):
+def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000)], model_path="models/rl_agent", use_wandb=True):
     """
     Handle the training loop, along with evaluation.
     """
     elo_tracker = EloTracker()
     for agent, timesteps in config:
         if isinstance(agent, (RandomAgent, MinimaxAgent)):
-            train(agent, timesteps, model_path)
+            train(agent, timesteps, model_path, use_wandb=use_wandb)
             rl_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
             rl_agent_instance.load(model_path)
             elo_tracker = evaluate(rl_agent_instance, agent, n_games=20, tracker=elo_tracker)
@@ -86,7 +86,7 @@ def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000
         if agent in [rlAgent]:
             # For self play break down into 25k timesteps in order to let model update every so often
             while timesteps > 25000:
-                self_play_train(25000, model_path, use_wandb=True)
+                self_play_train(25000, model_path, use_wandb=use_wandb)
                 timesteps -= 25000
                 
                 # Evaluate after loop
@@ -107,4 +107,5 @@ if __name__=="__main__":
         (MinimaxAgent(depth=3), 1000),
         (rlAgent, 100000)
     ]
-    handle_training(config=config)
+    while True:
+        handle_training(config=config, use_wandb=False)
