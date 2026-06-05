@@ -70,4 +70,4 @@ if __name__ == "__main__":
     rl.load("models/rl_agent")
 
     # Play against random agent
-    play_game(white_agent=rl, black_agent=RandomAgent(), chess960=False)
+    play_game(white_agent=rl, black_agent=RandomAgent(), chess960=True)

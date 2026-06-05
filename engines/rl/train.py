@@ -69,4 +69,7 @@ def self_play(total_timesteps, model_path, use_wandb=True):
             wandb.finish()
     
 if __name__=="__main__":
-    self_play(10000, "models/rl_agent")
+    train(RandomAgent(), 5000, use_wandb=True)
+    train(MinimaxAgent(depth=2), 50000, model_path="models/rl_agent",  use_wandb=True)
+    for _ in range(0,100):
+        self_play(10000, model_path="models/rl_agent", use_wandb=True)
