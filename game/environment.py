@@ -1,15 +1,12 @@
 """
 Wrapper for python-chess representing the gym environment
 """
-# Dependencies
 import chess
 import gymnasium as gym
 from random import randint
 import numpy as np
-
-# Modules
 from .board_representation import board_to_tensor
-
+from utils.action_masks import action_masks as action_masks_helper
 
 def pos_seed():
     # Random seed for chess960 setup
@@ -38,6 +35,13 @@ class ChessEnvironment(gym.Env):
         
         # Set opponent agent
         self.opponent = opponent
+    
+    def action_masks(self):
+        """
+        Returns a boolean mask of legal actions for the current board state.
+        """
+        mask = action_masks_helper(self.board)
+        return mask
     
     def reset(self, seed=None, options=None):
         # Reset the chess board.
