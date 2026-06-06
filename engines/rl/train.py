@@ -82,8 +82,9 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
 if __name__=="__main__":
     config = [
         (RandomAgent, 0, None),
-        (MinimaxAgent, 10000, None),
+        (MinimaxAgent, 100, None),
         (rlAgent, 1000, "models/rl_agent")
     ]
-    while True:
-        handle_training(agent_class=rlAgent, config=config, use_wandb=False, model_path="models/rl_agent_minimax")
+    #while True:
+    #    handle_training(agent_class=rlAgent, config=config, use_wandb=False, model_path="models/rl_agent_minimax")
+    handle_training(agent_class=rlAgent, config=config, use_wandb=False, model_path="models/rl_agent_test")
