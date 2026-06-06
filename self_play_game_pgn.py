@@ -75,10 +75,10 @@ if __name__ == "__main__":
     # Load trained RL agent as white
     temp_env = ChessEnvironment(opponent=RandomAgent())
     rl = rlAgent(temp_env)
-    rl.load("models/rl_agent_minimax")
+    rl.load("models/rl_agent_v1/rl_agent_v1")
     
     opp_agent = rlAgent(temp_env)
-    opp_agent.load("models/rl_agent")
+    opp_agent.load("models/rl_agent_v1/rl_agent_v1")
 
     # Play against random agent
     play_game(white_agent=rl, black_agent=opp_agent, chess960=True)
