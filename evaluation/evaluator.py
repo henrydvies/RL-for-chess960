@@ -13,7 +13,8 @@ def play_single_game(white_agent, black_agent):
     """
     board = chess.Board()
 
-    while not board.is_game_over():
+    move_count = 0
+    while not board.is_game_over() and move_count < 300:
         if board.turn == chess.WHITE:
             action = white_agent.take_turn(board)
         else:
@@ -23,12 +24,18 @@ def play_single_game(white_agent, black_agent):
         to_square = int(action) % 64
         move = chess.Move(from_square, to_square)
 
+        # Handle pawn promotion, default to queen
+        piece = board.piece_at(from_square)
+        if piece and piece.piece_type == chess.PAWN and chess.square_rank(to_square) == (7 if board.turn == chess.WHITE else 0):
+            move = chess.Move(from_square, to_square, promotion=chess.QUEEN)
+
         if move not in board.legal_moves:
             # Illegal move
             return board.turn != chess.WHITE
 
         board.push(move)
-
+        move_count += 1
+        
     outcome = board.outcome()
     if outcome is None:
         return None
@@ -36,6 +43,8 @@ def play_single_game(white_agent, black_agent):
         return True
     if outcome.winner == chess.BLACK:
         return False
+    if move_count >= 300:
+        return None
     return None
 
 
