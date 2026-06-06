@@ -5,12 +5,13 @@ from game.environment import ChessEnvironment
 from engines.minimax.minimax_agent import MinimaxAgent
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
+from engines.stockfish.stockfish_agent import StockfishAgent
 from wandb.integration.sb3 import WandbCallback
 from evaluation.elo_tracker import EloTracker
 from evaluation.evaluator import evaluate
 import wandb
 from evaluation.training_logger import TrainingLogger
-
+import numpy as np
 
 def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", opponent_agent_model_path=None, total_timesteps=0, use_wandb=False):
     """
@@ -40,15 +41,20 @@ def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", op
         callback = WandbCallback()
     
     logger = TrainingLogger(log_path)
+    ep_rew_mean = None
     # Run training
     try:
         agent.train(total_timesteps, callback=callback)
+        
+        # Get ep_mean for last few
+        if agent.model.ep_info_buffer:
+            ep_rew_mean = np.mean([ep["r"] for ep in agent.model.ep_info_buffer])
         
     finally:
         agent.save(agent_model_path)
         
         # Logging
-        logger.update_log(total_timesteps, opponent, None)
+        logger.update_log(total_timesteps, opponent, ep_rew_mean)
         logger.save()
         if use_wandb:
             wandb.finish()
@@ -88,12 +94,16 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
             elo_tracker = evaluate(RandomAgent(), MinimaxAgent(), n_games=10, tracker=elo_tracker)
         
         elo_tracker.save()
-    
+        
+        # For stockfish to close correctly
+        if hasattr(opponent_instance, 'close'):
+            opponent_instance.close()
     
 if __name__=="__main__":
     config = [
         (RandomAgent, 0, None),
         (MinimaxAgent, 100, None),
+        (StockfishAgent, 1000, None),
         (rlAgent, 1000, "models/rl_agent")
     ]
     #while True:

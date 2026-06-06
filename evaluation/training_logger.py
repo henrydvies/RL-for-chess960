@@ -5,6 +5,7 @@ import json
 from engines.minimax.minimax_agent import MinimaxAgent
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
+from engines.stockfish.stockfish_agent import StockfishAgent
 from datetime import datetime
 
 class TrainingLogger:
@@ -22,7 +23,7 @@ class TrainingLogger:
         # Update summary
         new_summary = self.logs["summary"]
         new_summary["total_timesteps"] += timesteps
-        opponent_type = {MinimaxAgent: "timesteps_vs_minimax", RandomAgent: "timesteps_vs_random", rlAgent: "timesteps_self_play"}[type(opponent)]
+        opponent_type = {MinimaxAgent: "timesteps_vs_minimax", RandomAgent: "timesteps_vs_random", rlAgent: "timesteps_self_play", StockfishAgent: "timesteps_vs_stockfish"}[type(opponent)]
         new_summary[opponent_type] += timesteps
         
         self.logs["summary"] = new_summary
@@ -58,7 +59,8 @@ class TrainingLogger:
                     "total_timesteps": 0,
                     "timesteps_vs_random": 0,
                     "timesteps_vs_minimax": 0,
-                    "timesteps_self_play": 0
+                    "timesteps_self_play": 0,
+                    "timesteps_vs_stockfish": 0
                 },
                 "runs": []
             }
