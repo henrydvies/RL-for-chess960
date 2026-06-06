@@ -4,7 +4,7 @@ Basic minimax chess playing engine.
 import chess
 from numpy import inf as np_inf
 class MinimaxAgent:
-    def __init__(self, depth=3):
+    def __init__(self, depth=2):
         # Depth for move depth of the agent
         self.depth = depth
         self.piece_values = {

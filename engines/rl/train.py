@@ -10,104 +10,80 @@ from evaluation.elo_tracker import EloTracker
 from evaluation.evaluator import evaluate
 import wandb
 
-def train(opponent, total_timesteps, model_path=None, use_wandb=True):
+
+def run_training(agent_class, opponent, agent_model_path="models/rl_agent", opponent_agent_model_path=None, total_timesteps=0, use_wandb=False):
     """
-    Run the training loop
+    Run the training loop vs any opponent
     """
-    # Create environment with engine opponent
+    # Create environment
     environment = ChessEnvironment(opponent)
     
-    # Create reinforcement learning agent
-    agent = rlAgent(environment)
+    agent = agent_class(environment)
     
-    # Load existing model
-    if model_path:
-        agent.load(model_path)
+    # Load agent
+    if agent_model_path:
+        agent.load(agent_model_path)
         agent.model.set_env(environment)
-    
+        
+    if opponent_agent_model_path:
+        opponent.load(opponent_agent_model_path)
+        
+    # Handle wandb logging
     callback = None
     if use_wandb:
         wandb.init(project="rl-chess960", sync_tensorboard=True)
         callback = WandbCallback()
-    
-    # Train, try/ finally to ensure model save incase issue during train.
+        
+    # Run training
     try:
-        agent.train(total_timesteps, callback)
+        agent.train(total_timesteps, callback=callback)
     finally:
-        # Save model
-        agent.save(model_path)
-        if use_wandb:
-            wandb.finish()
-    
-def self_play_train(total_timesteps, model_path, use_wandb=True):
-    """
-    Holds self play loop
-    """
-    # Create opponent agent
-    temp_environment = ChessEnvironment(RandomAgent())
-    opponent_agent = rlAgent(temp_environment)
-    
-    # Create training agent
-    environment = ChessEnvironment(opponent_agent)
-    agent = rlAgent(environment)
-    
-    # Load models
-    agent.load(model_path)
-    opponent_agent.load(model_path)
-    
-    agent.model.set_env(environment)
-    opponent_agent.model.set_env(temp_environment)
-    
-    callback = None
-    if use_wandb:
-        wandb.init(project="rl-chess960", sync_tensorboard=True)
-        callback = WandbCallback()
-    
-    try:
-        agent.train(total_timesteps, callback)
-    finally:
-        agent.save(model_path=model_path)
+        agent.save(agent_model_path)
         if use_wandb:
             wandb.finish()
 
-def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000)], model_path="models/rl_agent", use_wandb=True):
+def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (MinimaxAgent, 0, None), (rlAgent, 10000, "models/rl_agent")], model_path="models/rl_agent", use_wandb=True):
     """
     Handle the training loop, along with evaluation.
     """
     elo_tracker = EloTracker()
-    for agent, timesteps in config:
-        if isinstance(agent, (RandomAgent, MinimaxAgent)):
-            train(agent, timesteps, model_path, use_wandb=use_wandb)
-            rl_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
-            rl_agent_instance.load(model_path)
-            elo_tracker = evaluate(rl_agent_instance, agent, n_games=20, tracker=elo_tracker)
-                
+    timesteps_iteration_cap = 20000
+    for opponent_agent, timesteps, opponent_model_path in config:
+        # Handle rl agent
+        if opponent_agent == rlAgent:
+            temp_env = ChessEnvironment(RandomAgent())
+            opponent_instance = rlAgent(temp_env)
+        else:
+            temp_env = None
+            opponent_instance = opponent_agent()
+            
+        # Loop to run timesteps_iteration_cap before reloading model, to ensure it trains against up to date model
+        while timesteps > timesteps_iteration_cap:
+            run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_path=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps_iteration_cap, use_wandb=use_wandb)
+            timesteps -= timesteps_iteration_cap
         
-        if agent in [rlAgent]:
-            # For self play break down into 25k timesteps in order to let model update every so often
-            while timesteps > 25000:
-                self_play_train(25000, model_path, use_wandb=use_wandb)
-                timesteps -= 25000
-                
-                # Evaluate after loop
-                rl_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
-                rl_agent_instance.load(model_path)
-                opponent_agent_instance = rlAgent(ChessEnvironment(RandomAgent()))
-                opponent_agent_instance.load(model_path)
-                elo_tracker = evaluate(rl_agent_instance, opponent_agent_instance, n_games=20, tracker=elo_tracker)
-                
-                # Evaluate random vs minimax to keep ratings updated and avoid plummet to 0
-                elo_tracker = evaluate(RandomAgent(), MinimaxAgent(depth=3), n_games=20, tracker=elo_tracker)
-                
-            self_play_train(timesteps, model_path, use_wandb=use_wandb)
+        run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_path=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps, use_wandb=use_wandb)
+        
+        # Update elo
+        if not(temp_env):
+            temp_env = ChessEnvironment(RandomAgent())
+        elo_agent = rlAgent(temp_env)
+        elo_agent.load(model_path)
+        
+        elo_tracker = evaluate(elo_agent, opponent_instance, n_games=10, tracker=elo_tracker)
+
+        # For self-play also evaluate random vs minimax
+        if opponent_agent == rlAgent:
+            elo_tracker = evaluate(RandomAgent(), MinimaxAgent(), n_games=10, tracker=elo_tracker)
+        
         elo_tracker.save()
     
     
 if __name__=="__main__":
     config = [
-        (RandomAgent(), 0),
-        (MinimaxAgent(depth=2), 10000),
-        (rlAgent, 1000)
+        (RandomAgent, 0, None),
+        (MinimaxAgent, 10000, None),
+        (rlAgent, 1000, "models/rl_agent")
     ]
     while True:
-        handle_training(config=config, use_wandb=False, model_path="models/rl_agent_minimax")
+        handle_training(agent_class=rlAgent, config=config, use_wandb=False, model_path="models/rl_agent_minimax")

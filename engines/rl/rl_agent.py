@@ -18,7 +18,8 @@ class rlAgent:
             features_extractor_kwargs=dict(features_dim=256)
         )
         self.model = MaskablePPO("CnnPolicy", environment, policy_kwargs=policy_kwargs, verbose=0)
-    
+        self.training_iteration_timesteps = 20000
+        
     def train(self, total_timesteps, callback=None):
         """
         Train model over total_timesteps iterations
