@@ -100,12 +100,23 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
             opponent_instance.close()
     
 if __name__=="__main__":
-    config = [
-        (RandomAgent, 0, None),
-        (MinimaxAgent, 100, None),
-        (StockfishAgent, 1000, None),
-        (rlAgent, 1000, "models/rl_agent")
+    """
+    Basic two part loop to train a new model from scratch with updated logging. 
+    """
+    # Initial random and minimax training for baseline
+    initial_config = [
+        (RandomAgent, 10000, None),
+        (MinimaxAgent, 50000, None)
     ]
-    #while True:
-    #    handle_training(agent_class=rlAgent, config=config, use_wandb=False, model_path="models/rl_agent_minimax")
-    handle_training(agent_class=rlAgent, config=config, use_wandb=False, model_path="models/rl_agent_test")
+    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v1")
+    
+    # Main training loop to run overnight
+    main_config = [
+        (MinimaxAgent, 20000, None),
+        (StockfishAgent, 50000, None),
+        (rlAgent, 150000, "models/rl_agent_v1")
+    ]
+    while True:
+        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v1")
+    
+    
