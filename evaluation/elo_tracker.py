@@ -48,7 +48,8 @@ class EloTracker:
         expected_score = 1 / (1 + 10**((opponent_rating - agent_rating) / 400))
         new_elo = agent_rating + k * (actual_score - expected_score)
         
-        return new_elo
+        # Stop negative elos
+        return max(0, new_elo)
         
     def save(self):
         """
