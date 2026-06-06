@@ -41,6 +41,11 @@ def play_game(white_agent, black_agent, chess960=True):
         to_square = int(action) % 64
         move = chess.Move(from_square, to_square)
 
+        # Handle pawn promotion, default to queen
+        piece = board.piece_at(from_square)
+        if piece and piece.piece_type == chess.PAWN and chess.square_rank(to_square) == (7 if board.turn == chess.WHITE else 0):
+            move = chess.Move(from_square, to_square, promotion=chess.QUEEN)
+
         if move not in board.legal_moves:
             print(f"Illegal move attempted — game ended early.")
             break
@@ -70,7 +75,7 @@ if __name__ == "__main__":
     # Load trained RL agent as white
     temp_env = ChessEnvironment(opponent=RandomAgent())
     rl = rlAgent(temp_env)
-    rl.load("models/rl_agent")
+    rl.load("models/rl_agent_minimax")
     
     opp_agent = rlAgent(temp_env)
     opp_agent.load("models/rl_agent")
