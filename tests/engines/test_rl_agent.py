@@ -81,7 +81,7 @@ def test_save_creates_file(agent, tmp_path):
     save should create a model file
     """
     path = str(tmp_path / "test_model")
-    agent.save(model_folder=path)
+    agent.save(model_path=path)
     assert (tmp_path / "test_model.zip").exists()
 
 
@@ -90,6 +90,6 @@ def test_load_restores_model(agent, tmp_path):
     load should restore the model without errors
     """
     path = str(tmp_path / "test_model")
-    agent.save(model_folder=path)
+    agent.save(model_path=path)
     agent.load(path)
     assert agent.model is not None

@@ -89,7 +89,7 @@ class ChessEnvironment(gym.Env):
 
     def _convert_to_move(self, action):
         """
-        Converts action to a chess move object.
+        Converts action to a chess move object. Also handle promotions.
         """
         from_square = action // 64
         to_square = action % 64
@@ -97,6 +97,10 @@ class ChessEnvironment(gym.Env):
         # Make the move object
         move = chess.Move(from_square, to_square)
         
+        # Check for promotions, only queen promote for now
+        piece = self.board.piece_at(from_square)
+        if piece and piece.piece_type == chess.PAWN and chess.square_rank(to_square) == {chess.WHITE: 7, chess.BLACK: 0}[self.board.turn]:
+            move = chess.Move(from_square, to_square, promotion=chess.QUEEN)
         return move
     def _handle_outcome(self, outcome):
         """

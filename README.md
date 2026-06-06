@@ -1,33 +1,191 @@
-# Current plan
+# RL for Chess960
 
-### Step 1
-1. Setup basic chess960, use python-chess
-2. Wrap chess environment as a Gym compatible environment: reset, step, render
-3. Implement board state representation as an 8x8x12 tensor
-4. Define reward function
+Applying reinforcement learning to Chess960 (Fischer Random Chess) to explore whether an agent trained from scratch on randomised starting positions develops different strategic behaviour compared to classical engines, and whether the absence of opening theory narrows the performance gap.
 
-### Step 2
-1. Implement a random agent
-2. Simple minimax with basic eval
-3. Play random vs minimax to confirm environment working correctly
+Chess960 randomises the back rank piece positions across 960 possible configurations, nullifying opening books entirely. Classical engines like Stockfish derive significant advantage from memorised opening theory, so Chess960 levels the playing field theoretically and makes it a more honest test of learned strategic reasoning.
 
-### Step 3
-1. Implement PPO (Proximal Policy Optimisation) using Stable-Baselines3 or from scratch with pytorch
-2. Define policy netwwork: CNN over board tensor
-3. Train agent against random/ minimax opponent first
-4. Add self play loop, to generate training data
+---
 
-### Step 4
-1. Track elo rating over training iterations
-2. Benchmark against stockfish at progressivly lower depth settings
-3. Log/ visualise training curves
-4. Compare move distributions/ piece mobility patterns
+## Research Question
 
-### Step 5
-1. GUI to play against the agent
- - python-chess has this built in i believe.
-2. Could do website too? flask? 
+> Does an RL agent trained purely from self-play on Chess960 develop emergent strategic behaviour that differs from classical engines? And does the absence of opening theory reduce the performance gap?
 
+---
 
-*To train*
+## Tech Stack
+
+- **Python** — core language
+- **python-chess** — chess logic and Chess960 support
+- **PyTorch** — neural network and training
+- **Stable-Baselines3 / sb3-contrib** — MaskablePPO implementation
+- **Gymnasium** — RL environment interface
+- **Matplotlib** — training visualisation
+- **Wandb** — experiment tracking
+
+---
+
+## Project Structure
+
+```
+RL-FOR-Chess960/
+├── game/
+│   ├── environment.py          # Gym-compatible Chess960 environment
+│   └── board_representation.py # Board to tensor conversion (8x8x12)
+├── engines/
+│   ├── random/                 # Random agent
+│   ├── minimax/                # Minimax agent with material evaluation
+│   ├── stockfish/              # Stockfish wrapper agent
+│   └── rl/                     # PPO-based RL agent, policy network, training
+├── evaluation/
+│   ├── elo_tracker.py          # Elo rating tracking across agents
+│   ├── evaluator.py            # Game-playing evaluation loop
+│   ├── training_logger.py      # Per-run training log (JSON)
+│   └── plot_training.py        # Training curve visualisation
+├── utils/
+│   └── action_masks.py         # Legal move masking for MaskablePPO
+├── models/                     # Saved model weights and training logs (gitignored)
+├── visualisation/              # Training curve graphs (auto-generated)
+└── tests/                      # Full test suite
+```
+
+---
+
+## Board Representation
+
+The board is encoded as an **8x8x12 tensor**:
+- 8x8 for board squares
+- 12 layers: 6 piece types x 2 colours
+- White pieces: layers 0-5, Black pieces: layers 6-11
+- Each cell is binary (0 or 1)
+
+## Action Space
+
+Actions are integers 0-4095 encoding all 64x64 from/to square combinations:
+- `from_square = action // 64`
+- `to_square = action % 64`
+
+Action masking (via `MaskablePPO`) ensures only legal moves are sampled during training and inference.
+
+---
+
+## Training Curriculum
+
+The agent is trained using a staged curriculum:
+
+1. **Random opponent** — learns basic legal play
+2. **Minimax (depth 2)** — learns to avoid simple blunders and take pieces
+3. **Stockfish (depth 1)** — learns from a tactically consistent opponent
+4. **Self-play** — develops emergent strategy through iterative improvement
+
+Training metrics (ep_rew_mean) and Elo ratings are logged per run and updated automatically.
+
+---
+
+## Training Results
+
+### Performance vs Minimax
+
+<img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="500"/>
+
+### Performance vs Stockfish
+
+<img src="visualisation/rl_agent_v1/StockfishAgent.png" width="500"/>
+
+*Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
+
+---
+
+## Current Elo Ratings
+
+ELo only based on interactions between these agents, not a true FIDE elo rating.
+
+| Agent | Elo |
+|---|---|
+| RandomAgent | ~50 |
+| rlAgent | ~125 (improving) |
+| MinimaxAgent | ~200 |
+| StockfishAgent (depth 1) | ~820 |
+
+*Elo tracked dynamically using evaluation games between agents after each training phase.*
+
+---
+
+## Reward Function
+
+- Win: **+1**
+- Loss: **-1**
+- Draw: **0**
+- Illegal move: **-1** (episode terminates)
+- Midgame move: **0**
+
+Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avoid encoding human chess knowledge into the agent. The goal is purely emergent learning.
+
+---
+
+## Known Limitations
+
+- **Queen-only promotion** — the agent always promotes to queen. (In some cases a knight promotion can be better).
+- **Endgame conversion** — the agent struggles to convert winning endgames, often drawing by repetition due to sparse rewards.
+- **Training scale** — significantly below production RL chess systems (AlphaZero used ~56M timesteps on 5,000 TPUs).
+- **White only (training)** — the agent trains as white. Self-play exposes it to both colours at inference time.
+- **No MCTS** — inference uses greedy policy sampling rather than Monte Carlo Tree Search, limiting tactical depth at play time.
+
+---
+
+## How to Run
+
+### Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### Run tests
+```bash
+pytest
+```
+
+### Train a model
+```bash
 python -m engines.rl.train
+```
+
+### Play a game (outputs PGN for lichess/chess.com analysis)
+```bash
+python self_play_game_pgn.py
+```
+
+### Plot training curves
+```bash
+python -m evaluation.plot_training --model models/rl_agent_v1
+```
+
+---
+
+## Roadmap
+
+### Phase 1 — Environment 
+- Chess960 Gym-compatible environment, board tensor, reward function, CI
+
+### Phase 2 — Baseline Agents 
+- Random agent, Minimax agent with material evaluation
+
+### Phase 3 — RL Agent
+- MaskablePPO with custom CNN policy, action masking, self-play loop
+
+### Phase 4 — Training and Evaluation
+- Elo tracking, Stockfish benchmarking, training curves, per-run logging
+
+### Phase 5 — Interactive Play (planned)
+- CLI/GUI interface to play against the trained agent
+
+---
+
+## Potential Future Improvements
+
+- **Reward shaping** — small intermediate rewards for material gain to speed up tactical learning while preserving the emergent learning premise
+- **Self-play temperature** — occasionally forcing random moves during self-play to prevent repetitive patterns and encourage exploration
+- **Longer survival reward** — rewarding the agent for surviving more moves to discourage early collapse
+- **MCTS at inference** — replacing greedy policy sampling with Monte Carlo Tree Search for stronger play at inference time without retraining
+- **ResNet architecture** — replacing the CNN with a residual network for richer positional feature learning
+- **Random colour assignment** — training as both white and black for more balanced play
+- **Meta-learning** — training a reward function that maximises learning speed rather than hand-designing rewards, inspired by the idea of self-improving reward mechanisms

@@ -27,3 +27,7 @@ Thumbs.db
 *.ckpt
 
 models/
+
+wandb/
+
+stockfish_exe/

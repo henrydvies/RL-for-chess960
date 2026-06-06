@@ -26,12 +26,12 @@ def play_game(white_agent, black_agent, chess960=True):
     game.headers["SetUp"] = "1"
     game.headers["White"] = white_agent.__class__.__name__
     game.headers["Black"] = black_agent.__class__.__name__
-    game.headers["Variant"] = "Chess960" if chess960 else "Standard"
+    #game.headers["Variant"] = "Chess960" if chess960 else "Standard"
     node = game
 
     move_count = 0
 
-    while not board.is_game_over():
+    while not board.is_game_over() and move_count < 300:
         if board.turn == chess.WHITE:
             action = white_agent.take_turn(board)
         else:
@@ -40,6 +40,11 @@ def play_game(white_agent, black_agent, chess960=True):
         from_square = int(action) // 64
         to_square = int(action) % 64
         move = chess.Move(from_square, to_square)
+
+        # Handle pawn promotion, default to queen
+        piece = board.piece_at(from_square)
+        if piece and piece.piece_type == chess.PAWN and chess.square_rank(to_square) == (7 if board.turn == chess.WHITE else 0):
+            move = chess.Move(from_square, to_square, promotion=chess.QUEEN)
 
         if move not in board.legal_moves:
             print(f"Illegal move attempted — game ended early.")
@@ -55,6 +60,9 @@ def play_game(white_agent, black_agent, chess960=True):
         result = outcome.result()
     else:
         result = "*"
+        
+    if move_count >= 300:
+        result = "1/2-1/2"
     game.headers["Result"] = result
 
     print(f"\nGame finished in {move_count} moves. Result: {result}")
@@ -67,7 +75,10 @@ if __name__ == "__main__":
     # Load trained RL agent as white
     temp_env = ChessEnvironment(opponent=RandomAgent())
     rl = rlAgent(temp_env)
-    rl.load("models/rl_agent")
+    rl.load("models/rl_agent_v1/rl_agent_v1")
+    
+    opp_agent = rlAgent(temp_env)
+    opp_agent.load("models/rl_agent_v1/rl_agent_v1")
 
     # Play against random agent
-    play_game(white_agent=rl, black_agent=RandomAgent())
+    play_game(white_agent=rl, black_agent=opp_agent, chess960=True)
