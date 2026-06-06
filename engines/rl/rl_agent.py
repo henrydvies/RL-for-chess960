@@ -6,6 +6,7 @@ from game.board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
 from numpy import newaxis as new_axis
 from sb3_contrib import MaskablePPO
+import os
 
 class rlAgent:
     def __init__(self, environment):
@@ -16,7 +17,7 @@ class rlAgent:
             features_extractor_class=PolicyNetwork,
             features_extractor_kwargs=dict(features_dim=256)
         )
-        self.model = MaskablePPO("CnnPolicy", environment, policy_kwargs=policy_kwargs, verbose=1)
+        self.model = MaskablePPO("CnnPolicy", environment, policy_kwargs=policy_kwargs, verbose=0)
     
     def train(self, total_timesteps, callback=None):
         """
@@ -26,17 +27,20 @@ class rlAgent:
         self.model.learn(total_timesteps, callback=callback)
         
     
-    def save(self, model_folder="models/rl_agent"):
+    def save(self, model_path=None):
         """
         Save state
         """
-        self.model.save(model_folder)
+        if model_path is None:
+            model_path = "models/rl_agent"
+        self.model.save(model_path)
     
     def load(self, model_path):
         """
         Load model
         """
-        self.model = self.model.load(model_path)
+        if os.path.exists(model_path + ".zip"):
+            self.model = self.model.load(model_path)
         
     def take_turn(self, board):
         """

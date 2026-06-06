@@ -31,7 +31,7 @@ def play_game(white_agent, black_agent, chess960=True):
 
     move_count = 0
 
-    while not board.is_game_over():
+    while not board.is_game_over() and move_count < 300:
         if board.turn == chess.WHITE:
             action = white_agent.take_turn(board)
         else:
@@ -55,6 +55,9 @@ def play_game(white_agent, black_agent, chess960=True):
         result = outcome.result()
     else:
         result = "*"
+        
+    if move_count >= 300:
+        result = "1/2-1/2"
     game.headers["Result"] = result
 
     print(f"\nGame finished in {move_count} moves. Result: {result}")
@@ -68,6 +71,9 @@ if __name__ == "__main__":
     temp_env = ChessEnvironment(opponent=RandomAgent())
     rl = rlAgent(temp_env)
     rl.load("models/rl_agent")
+    
+    opp_agent = rlAgent(temp_env)
+    opp_agent.load("models/rl_agent")
 
     # Play against random agent
-    play_game(white_agent=rl, black_agent=RandomAgent(), chess960=True)
+    play_game(white_agent=rl, black_agent=opp_agent, chess960=True)

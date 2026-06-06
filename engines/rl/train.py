@@ -35,7 +35,7 @@ def train(opponent, total_timesteps, model_path=None, use_wandb=True):
         agent.train(total_timesteps, callback)
     finally:
         # Save model
-        agent.save()
+        agent.save(model_path)
         if use_wandb:
             wandb.finish()
     
@@ -66,7 +66,7 @@ def self_play_train(total_timesteps, model_path, use_wandb=True):
     try:
         agent.train(total_timesteps, callback)
     finally:
-        agent.save()
+        agent.save(model_path=model_path)
         if use_wandb:
             wandb.finish()
 
@@ -96,16 +96,18 @@ def handle_training(config=[(RandomAgent, 0), (MinimaxAgent, 0), (rlAgent, 10000
                 opponent_agent_instance.load(model_path)
                 elo_tracker = evaluate(rl_agent_instance, opponent_agent_instance, n_games=20, tracker=elo_tracker)
                 
+                # Evaluate random vs minimax to keep ratings updated and avoid plummet to 0
+                elo_tracker = evaluate(RandomAgent(), MinimaxAgent(depth=3), n_games=20, tracker=elo_tracker)
                 
-            self_play_train(timesteps, model_path, use_wandb=True)
+            self_play_train(timesteps, model_path, use_wandb=use_wandb)
         elo_tracker.save()
     
     
 if __name__=="__main__":
     config = [
-        (RandomAgent(), 200),
-        (MinimaxAgent(depth=3), 1000),
-        (rlAgent, 100000)
+        (RandomAgent(), 0),
+        (MinimaxAgent(depth=2), 10000),
+        (rlAgent, 1000)
     ]
     while True:
-        handle_training(config=config, use_wandb=False)
+        handle_training(config=config, use_wandb=False, model_path="models/rl_agent_minimax")

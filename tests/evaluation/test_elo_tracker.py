@@ -12,7 +12,7 @@ def tracker():
     """
     Fresh EloTracker with known starting ratings, no file path
     """
-    return EloTracker(elo_map={"rlAgent": 600, "RandomAgent": 600})
+    return EloTracker(elo_map={"rlAgent": 600, "RandomAgent": 600}, elo_tracking_path="nonexistent.json")
 
 
 @pytest.fixture

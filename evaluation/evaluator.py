@@ -47,7 +47,7 @@ def evaluate(rl_agent, opponent, n_games=20, tracker=None):
     if tracker is None:
         tracker = EloTracker()
 
-    rl_name = "rlAgent"
+    rl_name = rl_agent.__class__.__name__
     opponent_name = opponent.__class__.__name__
 
     # Ensure both agents are in the tracker
@@ -60,7 +60,7 @@ def evaluate(rl_agent, opponent, n_games=20, tracker=None):
 
     for _ in range(n_games):
         result = play_single_game(rl_agent, opponent)
-        print(f"Game result: {result}")
+        #print(f"Game result: {result}")
         # Update Elo in memory
         tracker.update(rl_name, opponent_name, result)
         if result is True:
