@@ -15,7 +15,7 @@ class TrainingLogger:
         self.log_file_path = log_file_path
         self.logs = self.load()
         
-    def update_log(self, timesteps, opponent, ep_rew_mean):
+    def update_log(self, timesteps, opponent, ep_rew_mean=None):
         """
         Update summary and append a per run log
         """

@@ -9,12 +9,17 @@ from wandb.integration.sb3 import WandbCallback
 from evaluation.elo_tracker import EloTracker
 from evaluation.evaluator import evaluate
 import wandb
+from evaluation.training_logger import TrainingLogger
 
 
-def run_training(agent_class, opponent, agent_model_path="models/rl_agent", opponent_agent_model_path=None, total_timesteps=0, use_wandb=False):
+def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", opponent_agent_model_path=None, total_timesteps=0, use_wandb=False):
     """
     Run the training loop vs any opponent
     """
+    # Extract file locations
+    agent_model_path = f"{agent_model_folder}/{agent_model_folder.split('/')[-1]}"
+    log_path = f"{agent_model_folder}/training_log.json"
+    
     # Create environment
     environment = ChessEnvironment(opponent)
     
@@ -33,12 +38,18 @@ def run_training(agent_class, opponent, agent_model_path="models/rl_agent", oppo
     if use_wandb:
         wandb.init(project="rl-chess960", sync_tensorboard=True)
         callback = WandbCallback()
-        
+    
+    logger = TrainingLogger(log_path)
     # Run training
     try:
         agent.train(total_timesteps, callback=callback)
+        
     finally:
         agent.save(agent_model_path)
+        
+        # Logging
+        logger.update_log(total_timesteps, opponent, None)
+        logger.save()
         if use_wandb:
             wandb.finish()
 
@@ -59,16 +70,16 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
             
         # Loop to run timesteps_iteration_cap before reloading model, to ensure it trains against up to date model
         while timesteps > timesteps_iteration_cap:
-            run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_path=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps_iteration_cap, use_wandb=use_wandb)
+            run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps_iteration_cap, use_wandb=use_wandb)
             timesteps -= timesteps_iteration_cap
         
-        run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_path=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps, use_wandb=use_wandb)
+        run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps, use_wandb=use_wandb)
         
         # Update elo
         if not(temp_env):
             temp_env = ChessEnvironment(RandomAgent())
         elo_agent = rlAgent(temp_env)
-        elo_agent.load(model_path)
+        elo_agent.load(f"{model_path}/{model_path.split('/')[-1]}")
         
         elo_tracker = evaluate(elo_agent, opponent_instance, n_games=10, tracker=elo_tracker)
 
