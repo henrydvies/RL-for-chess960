@@ -17,7 +17,15 @@ class rlAgent:
             features_extractor_class=PolicyNetwork,
             features_extractor_kwargs=dict(features_dim=256)
         )
-        self.model = MaskablePPO("CnnPolicy", environment, policy_kwargs=policy_kwargs, verbose=0)
+        self.model = MaskablePPO(
+            "CnnPolicy", 
+            environment, 
+            policy_kwargs=policy_kwargs, 
+            verbose=0,
+            gamma=0.995, # Discount factor, longer chess games are devalued with defaults.
+            ent_coef=0.01, # entropy bonus, forces exploration
+            n_steps=4096, # More samples per update - not applied to agent_v1
+        )
         
     def train(self, total_timesteps, callback=None):
         """
@@ -41,6 +49,8 @@ class rlAgent:
         """
         if os.path.exists(model_path + ".zip"):
             self.model = self.model.load(model_path)
+            self.model.gamme = 0.995
+            self.model.ent_coef = 0.01
         
     def take_turn(self, board):
         """

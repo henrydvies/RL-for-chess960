@@ -102,7 +102,7 @@ class ChessEnvironment(gym.Env):
                 opponent_action = self.opponent.take_turn(self.board)
             
             # Decay temperature
-            self.temperature = max(0.05, 0.2 - (self.step_counter / 100000) * 0.15) # Linear decay, goes from 0.1 -> 0.05 in 100k steps.
+            self.temperature = max(0.05, 0.2 - (self.step_counter / 40000) * 0.15) # Linear decay, goes from 0.1 -> 0.05 in 100k steps.
             # Make opponent move
             opponent_move = self._convert_to_move(opponent_action)
             self.board.push(opponent_move)
