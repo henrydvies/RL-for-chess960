@@ -7,6 +7,7 @@ from random import randint
 import numpy as np
 from .board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
+import random
 
 def pos_seed():
     # Random seed for chess960 setup
@@ -33,6 +34,10 @@ class ChessEnvironment(gym.Env):
         # Player colour, white only for now
         self.player_colour = chess.WHITE
         
+        # Colour tracking
+        self.white_episodes = 0
+        self.black_episodes = 0
+        
         # Set opponent agent
         self.opponent = opponent
     
@@ -47,6 +52,17 @@ class ChessEnvironment(gym.Env):
         # Reset the chess board.
         self.board = chess.Board.from_chess960_pos(pos_seed())
         self.game_over = False
+        self.player_colour = random.choice([chess.WHITE, chess.BLACK])
+        
+        if self.player_colour == chess.WHITE:
+            self.white_episodes += 1
+        else:
+            self.black_episodes += 1
+        
+        # Handle Black side
+        if self.player_colour == chess.BLACK:
+            # Push opponent move
+            self.board.push(self._convert_to_move(self.opponent.take_turn(self.board)))
         
         return board_to_tensor(self.board), {}
     

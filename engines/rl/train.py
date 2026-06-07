@@ -41,11 +41,15 @@ def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", op
         callback = WandbCallback()
     
     logger = TrainingLogger(log_path)
+    colour_distrubution = {"white": 0, "black": 0}
     ep_rew_mean = None
+    
     # Run training
     try:
         agent.train(total_timesteps, callback=callback)
         
+        # Get colour played
+        colour_distrubution = {"white": environment.white_episodes, "black": environment.black_episodes}
         # Get ep_mean for last few
         if agent.model.ep_info_buffer:
             ep_rew_mean = np.mean([ep["r"] for ep in agent.model.ep_info_buffer])
@@ -54,7 +58,7 @@ def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", op
         agent.save(agent_model_path)
         
         # Logging
-        logger.update_log(total_timesteps, opponent, ep_rew_mean)
+        logger.update_log(total_timesteps, opponent, ep_rew_mean, colour_distrubution)
         logger.save()
         if use_wandb:
             wandb.finish()

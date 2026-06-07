@@ -16,7 +16,7 @@ class TrainingLogger:
         self.log_file_path = log_file_path
         self.logs = self.load()
         
-    def update_log(self, timesteps, opponent, ep_rew_mean=None):
+    def update_log(self, timesteps, opponent, ep_rew_mean=None, colour_counts=None):
         """
         Update summary and append a per run log
         """
@@ -26,6 +26,10 @@ class TrainingLogger:
         opponent_type = {MinimaxAgent: "timesteps_vs_minimax", RandomAgent: "timesteps_vs_random", rlAgent: "timesteps_self_play", StockfishAgent: "timesteps_vs_stockfish"}[type(opponent)]
         new_summary[opponent_type] += timesteps
         
+        if colour_counts:
+            self.logs["summary"]["colour_distribution"]["white"] += colour_counts.get("white", 0)
+            self.logs["summary"]["colour_distribution"]["black"] += colour_counts.get("black", 0)
+            
         self.logs["summary"] = new_summary
         
         # Append per run log
@@ -60,7 +64,8 @@ class TrainingLogger:
                     "timesteps_vs_random": 0,
                     "timesteps_vs_minimax": 0,
                     "timesteps_self_play": 0,
-                    "timesteps_vs_stockfish": 0
+                    "timesteps_vs_stockfish": 0,
+                    "colour_distribution": {"white": 0, "black": 0}
                 },
                 "runs": []
             }
