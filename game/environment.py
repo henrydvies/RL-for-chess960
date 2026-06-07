@@ -8,6 +8,7 @@ import numpy as np
 from .board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
 import random
+from engines.random.random_agent import RandomAgent
 
 def pos_seed():
     # Random seed for chess960 setup
@@ -18,7 +19,7 @@ class ChessEnvironment(gym.Env):
     Class to represent chess gym environment, used for training. 
     """
 
-    def __init__(self, opponent):
+    def __init__(self, opponent, temperature = 0.1):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
         self.board = chess.Board.from_chess960_pos(pos_seed())
         
@@ -40,6 +41,12 @@ class ChessEnvironment(gym.Env):
         
         # Set opponent agent
         self.opponent = opponent
+        
+        # Set chance opponent moves randomly for exploration of moves
+        self.temperature = temperature
+        
+        # Random agent instance
+        self.random_agent = RandomAgent()
     
     def action_masks(self):
         """
@@ -84,9 +91,13 @@ class ChessEnvironment(gym.Env):
         reward = self._handle_outcome(outcome)
 
         if not(self.game_over):     
-            # Take opponent move
-            opponent_action = self.opponent.take_turn(self.board)
-            
+            # Take opponent move, with chance for random move, defaulted to 10%
+            # This also applies vs random/ minimax/ stockfish, intend to add only vs self play.
+            if random.random() < self.temperature:
+                opponent_action = self.random_agent.take_turn(self.board)
+            else:
+                opponent_action = self.opponent.take_turn(self.board)
+                        
             # Make opponent move
             opponent_move = self._convert_to_move(opponent_action)
             self.board.push(opponent_move)
