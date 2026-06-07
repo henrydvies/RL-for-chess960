@@ -29,8 +29,8 @@ class ChessEnvironment(gym.Env):
         # All possible moves: 64 squares map to 64 squares: Hence 64*64 = 4096
         self.action_space = gym.spaces.Discrete(4096)
         
-        # Set of valid data that can be recieved: 8*8 for the board, 12 layers for 6 piece types * 2 piece colours
-        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(8, 8, 12), dtype=np.int8)
+        # Set of valid data
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(8, 8, 20), dtype=np.int8)
         
         # Player colour, white only for now
         self.player_colour = chess.WHITE

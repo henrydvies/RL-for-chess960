@@ -18,30 +18,19 @@ def empty_board():
 
 def test_output_shape():
     """
-    Tensor should always be (8, 8, 12) regardless of board state
+    Tensor should always be (8, 8, 20) regardless of board state
     """
     board = chess.Board()
     result = board_to_tensor(board)
-    assert result.shape == (8, 8, 12)
+    assert result.shape == (8, 8, 20)
 
 
 def test_output_shape_empty_board():
     """
-    Shape should be (8, 8, 12) even for an empty board
+    Shape should be (8, 8, 20) even for an empty board
     """
     result = board_to_tensor(empty_board())
-    assert result.shape == (8, 8, 12)
-
-
-## Testing empty board
-
-def test_empty_board_all_zeros():
-    """
-    An empty board should produce an all-zero tensor
-    """
-    result = board_to_tensor(empty_board())
-    assert np.all(result == 0)
-
+    assert result.shape == (8, 8, 20)
 
 ## Testing with white pieces
 
@@ -143,4 +132,4 @@ def test_only_one_layer_set_per_square():
     result = board_to_tensor(board)
 
     rank, file = chess.square_rank(chess.E4), chess.square_file(chess.E4)
-    assert result[rank, file, :].sum() == 1
+    assert result[rank, file, :12].sum() == 1

@@ -129,6 +129,7 @@ if __name__=="__main__":
         handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v1")
     """
     initial_config = [
-        (rlAgent, 1000, "models/rl_agent_v1")
+        (RandomAgent, 1000, None),
+        (rlAgent, 1000, "models/rl_agent_v2"),
     ]
-    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v1")
+    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v2")
