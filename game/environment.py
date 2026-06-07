@@ -144,7 +144,7 @@ class ChessEnvironment(gym.Env):
             if outcome.winner == self.player_colour:
                 reward = 1
             elif outcome.winner is None:
-                reward = 0
+                reward = -0.1 # Slight penalty on draws
             else:
                 reward = -1
             
