@@ -32,7 +32,8 @@ def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", op
         agent.model.set_env(environment)
         
     if opponent_agent_model_path:
-        opponent.load(opponent_agent_model_path)
+        derived_opponent_path = f"{opponent_agent_model_path}/{opponent_agent_model_path.split('/')[-1]}"
+        opponent.load(derived_opponent_path)
         
     # Handle wandb logging
     callback = None
@@ -99,6 +100,9 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
         
         elo_tracker.save()
         
+        # For snapshots to be used in FSP
+        
+        
         # For stockfish to close correctly
         if hasattr(opponent_instance, 'close'):
             opponent_instance.close()
@@ -106,6 +110,7 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
 if __name__=="__main__":
     """
     Basic two part loop to train a new model from scratch with updated logging. 
+    """
     """
     # Initial random and minimax training for baseline
     initial_config = [
@@ -122,5 +127,8 @@ if __name__=="__main__":
     ]
     while True:
         handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v1")
-    
-    
+    """
+    initial_config = [
+        (rlAgent, 1000, "models/rl_agent_v1")
+    ]
+    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v1")
