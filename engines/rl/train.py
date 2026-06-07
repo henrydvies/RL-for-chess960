@@ -133,7 +133,6 @@ if __name__=="__main__":
     """
     Basic two part loop to train a new model from scratch with updated logging. 
     """
-    """
     # Initial random and minimax training for baseline
     initial_config = [
         (RandomAgent, 10000, None),
@@ -144,14 +143,8 @@ if __name__=="__main__":
     # Main training loop to run overnight
     main_config = [
         (MinimaxAgent, 20000, None),
-        (StockfishAgent, 50000, None),
-        (rlAgent, 150000, "models/rl_agent_v2")
+        (StockfishAgent, 30000, None),
+        (rlAgent, 170000, "models/rl_agent_v2")
     ]
     while True:
         handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v2")
-    """
-    initial_config = [
-        (RandomAgent, 1000, None),
-        (rlAgent, 1000, "models/rl_agent_v2"),
-    ]
-    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v2")

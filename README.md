@@ -80,20 +80,41 @@ The agent is trained using a staged curriculum:
 Training metrics (ep_rew_mean) and Elo ratings are logged per run and updated automatically.
 
 ---
+## Improvements in v2
+
+Discovered a large bug present for all of v1 training, where opponent model wasn't loading, meaning self play was actually against the random agent.
+Applied fix, and as it gave opportunity to train new agent implemented some architecture improvements.
+
+- **Bug fix** — opponent model loading was failing silently during self-play, meaning v1's "self-play" training.
+- **More input planes** — expanded board representation from 8x8x12 to 8x8x20, adding turn indicator, castling rights (4 planes), en passant, repetition, and move count threshold.
+- **Fictitious Self-Play** — opponent in self-play sampled 20% of the time from a pool of past snapshots, addressing strategy cycling. 
+- **PPO hyperparameter tuning** — gamma=0.995 (default 0.99) for long chess games, ent_coef=0.01 (default 0) for explicit exploration regularisation, n_steps=4096 for more samples per update.
+- **Draw penalty** — small negative reward (-0.1) for draws to discourage repetition-based stalling.
+- **Random colour assignment** — agent trains as both white and black, balanced 50/50.
+- **Opponent temperature with decay** — opponent occasionally plays random moves (0.2 → 0.05) to encourage exploration of novel positions during self-play.
+
+---
 
 ## Training Results
 
-### Performance vs Minimax
+### v1 (baseline — 12-plane representation)
 
+#### Performance vs Minimax
 <img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="500"/>
 
-### Performance vs Stockfish
-
+#### Performance vs Stockfish
 <img src="visualisation/rl_agent_v1/StockfishAgent.png" width="500"/>
+
+### v2 (richer representation + FSP)
+
+#### Performance vs Minimax
+<img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="500"/>
+
+#### Performance vs Stockfish
+<img src="visualisation/rl_agent_v2/StockfishAgent.png" width="500"/>
 
 *Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
 
----
 
 ## Current Elo Ratings
 
@@ -183,9 +204,7 @@ python -m evaluation.plot_training --model models/rl_agent_v1
 ## Potential Future Improvements
 
 - **Reward shaping** — small intermediate rewards for material gain to speed up tactical learning while preserving the emergent learning premise
-- **Self-play temperature** — occasionally forcing random moves during self-play to prevent repetitive patterns and encourage exploration
 - **Longer survival reward** — rewarding the agent for surviving more moves to discourage early collapse
 - **MCTS at inference** — replacing greedy policy sampling with Monte Carlo Tree Search for stronger play at inference time without retraining
 - **ResNet architecture** — replacing the CNN with a residual network for richer positional feature learning
-- **Random colour assignment** — training as both white and black for more balanced play
 - **Meta-learning** — training a reward function that maximises learning speed rather than hand-designing rewards, inspired by the idea of self-improving reward mechanisms
