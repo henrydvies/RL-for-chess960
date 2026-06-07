@@ -49,7 +49,7 @@ class ChessEnvironment(gym.Env):
         self.random_agent = RandomAgent()
         
         # For temperature decay
-        self.step_counter = 1
+        self.step_counter = 0
     
     def action_masks(self):
         """
