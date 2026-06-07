@@ -47,6 +47,9 @@ class ChessEnvironment(gym.Env):
         
         # Random agent instance
         self.random_agent = RandomAgent()
+        
+        # For temperature decay
+        self.step_counter = 1
     
     def action_masks(self):
         """
@@ -97,7 +100,9 @@ class ChessEnvironment(gym.Env):
                 opponent_action = self.random_agent.take_turn(self.board)
             else:
                 opponent_action = self.opponent.take_turn(self.board)
-                        
+            
+            # Decay temperature
+            self.temperature = max(0.05, 0.2 - (self.step_counter / 100000) * 0.15) # Linear decay, goes from 0.1 -> 0.05 in 100k steps.
             # Make opponent move
             opponent_move = self._convert_to_move(opponent_action)
             self.board.push(opponent_move)
