@@ -133,9 +133,9 @@ ELo only based on interactions between these agents, not a true FIDE elo rating.
 
 ## Reward Function
 
-- Win: **+1**
+- Win: **+1 + (200-move_count)* 0.001** (quick wins reward more)
 - Loss: **-1**
-- Draw: **0**
+- Draw: **-0.1** (small penalty to discourage repetition-based stalling)
 - Illegal move: **-1** (episode terminates)
 - Midgame move: **0**
 
