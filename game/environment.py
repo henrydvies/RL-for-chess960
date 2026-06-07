@@ -142,7 +142,7 @@ class ChessEnvironment(gym.Env):
         if outcome:
             # Handle game over
             if outcome.winner == self.player_colour:
-                reward = 1
+                reward = 1 + max(0, (200 - self.board.fullmove_number) * 0.001)
             elif outcome.winner is None:
                 reward = -0.1 # Slight penalty on draws
             else:

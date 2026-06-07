@@ -133,7 +133,7 @@ def test_checkmate_returns_positive_reward():
     move = chess.Move(chess.H5, chess.F7)
     action = move.from_square * 64 + move.to_square
     _, reward, _, _, _ = env.step(action)
-    assert reward == 1
+    assert reward >= 1
 
 
 def test_checkmate_terminates_game():
