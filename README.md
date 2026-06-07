@@ -115,6 +115,7 @@ Applied fix, and as it gave opportunity to train new agent implemented some arch
 
 *Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
 
+---
 
 ## Current Elo Ratings
 
@@ -133,13 +134,27 @@ ELo only based on interactions between these agents, not a true FIDE elo rating.
 
 ## Reward Function
 
-- Win: **+1 + (200-move_count)* 0.001** (quick wins reward more)
+- Win: **+1 + (200-move_count)* 0.001**
 - Loss: **-1**
-- Draw: **-0.1** (small penalty to discourage repetition-based stalling)
-- Illegal move: **-1** (episode terminates)
+- Draw: **-0.1**
+- Illegal move: **-1*
 - Midgame move: **0**
 
 Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avoid encoding human chess knowledge into the agent. The goal is purely emergent learning.
+
+---
+
+## Design Decisions
+
+**Pure emergent learning vs reward shaping** — chose to avoid encoding chess knowledge (material values, positional heuristics) even though this slows learning.
+
+**Action masking** — used MaskablePPO rather than penalising illegal moves heavily. Illegal moves still get -1, but masking prevents them being sampled in the first place. 
+
+**Queen-only promotion** — currently always promote to queen. Knight promotions can be better at times, but done for simplicity.
+
+**Fictitious Self-Play sampling rate** — 20% past versions, 80% current model. Matches OpenAI Five's Dota 2 default. Higher past-version rates would slow learning but increase diversity.
+
+**Stockfish at depth 1 only** — single difficulty level keeps ep_rew_mean as a clean benchmark metric. Mixed difficulties would mask the actual benchmark with easier wins.
 
 ---
 
