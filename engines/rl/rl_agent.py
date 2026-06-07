@@ -47,7 +47,6 @@ class rlAgent:
         """
         Load model
         """
-        print(f"Trying to load from: {model_path}.zip — exists: {os.path.exists(model_path + '.zip')}")
         if os.path.exists(model_path + ".zip"):
             self.model = self.model.load(model_path)
             self.model.gamme = 0.995
