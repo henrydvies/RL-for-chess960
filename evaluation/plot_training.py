@@ -7,6 +7,7 @@ import json
 import os
 import argparse
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, MultipleLocator
 from collections import defaultdict
 
 
@@ -54,35 +55,119 @@ def plot_training(model_folder):
         if not x:
             continue
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(x, y, marker="o", markersize=3, linewidth=1.5, color="steelblue", label="ep_rew_mean")
-        ax.axhline(0, color="gray", linestyle="--", linewidth=0.8, label="Neutral (0.0)")
-        ax.set_title(f"ep_rew_mean vs {opponent_name} — {model_name}", fontsize=13)
-        ax.set_xlabel("Total Timesteps Trained (all opponents)", fontsize=11)
-        ax.set_ylabel("Mean Episode Reward", fontsize=11)
-        ax.grid(True, alpha=0.3)
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        ax.plot(
+            x,
+            y,
+            marker="o",
+            markersize=3,
+            linewidth=1.5,
+            color="steelblue",
+            label="ep_rew_mean"
+        )
+
+        ax.axhline(
+            0,
+            color="gray",
+            linestyle="--",
+            linewidth=0.8,
+            label="Neutral (0.0)"
+        )
+
+        # Format x axis in millions
+        ax.xaxis.set_major_formatter(FuncFormatter(format_timesteps))
+
+        ax.set_title(
+            f"ep_rew_mean vs {opponent_name} — {model_name}",
+            fontsize=13
+        )
+
+        ax.set_xlabel(
+            "Total Timesteps Trained (all opponents)",
+            fontsize=11
+        )
+
+        ax.set_ylabel(
+            "Mean Episode Reward",
+            fontsize=11
+        )
+
+        # RL rewards are bounded between -1 and 1
+        ax.set_ylim(-1, 1)
+        ax.yaxis.set_major_locator(MultipleLocator(0.1))
+
+        ax.grid(
+            True,
+            which="major",
+            linestyle="--",
+            linewidth=0.5,
+            alpha=0.35
+        )
+
+        # Cleaner publication-style axes
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
 
         if len(y) >= 5:
             window = min(5, len(y))
+
             rolling = [
                 sum(y[max(0, i - window):i]) / min(i, window)
                 for i in range(1, len(y) + 1)
             ]
-            ax.plot(x, rolling, color="orange", linewidth=2, linestyle="--", label=f"{window}-run rolling avg")
 
-        ax.legend()
+            ax.plot(
+                x,
+                rolling,
+                color="orange",
+                linewidth=2.5,
+                linestyle="--",
+                label=f"{window}-run rolling avg"
+            )
+
+        ax.legend(frameon=False)
+
         plt.tight_layout()
 
-        output_path = os.path.join(output_folder, f"{opponent_name}.png")
-        plt.savefig(output_path, dpi=150)
+        output_path = os.path.join(
+            output_folder,
+            f"{opponent_name}.png"
+        )
+
+        plt.savefig(
+            output_path,
+            dpi=300,
+            bbox_inches="tight"
+        )
+
         plt.close()
+
         print(f"Saved: {output_path}")
 
     print(f"\nAll graphs saved to {output_folder}/")
 
+def format_timesteps(value, _):
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"{value / 1_000:.0f}K"
+    return str(int(value))
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Plot training progress from log file")
-    parser.add_argument("--model", type=str, default="models/rl_agent_v3", help="Path to model folder")
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="models/rl_agent_v3",
+        help="Path to model folder"
+    )
+
     args = parser.parse_args()
+
     plot_training(args.model)
+    
+    
+
+

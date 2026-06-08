@@ -117,18 +117,16 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
         
         elo_tracker.save()
         
-        # For snapshots to be used in FSP
-        os.makedirs(f"{model_path}/snapshots", exist_ok=True)
-        snapshot_count = len(os.listdir(f"{model_path}/snapshots"))
-        shutil.copy(
-            f"{model_path}/{model_path.split('/')[-1]}.zip",
-            f"{model_path}/snapshots/snapshot_{snapshot_count + 1}.zip"
-        )
-        
         # For stockfish to close correctly
         if hasattr(opponent_instance, 'close'):
             opponent_instance.close()
-    
+        # For snapshots to be used in FSP
+    os.makedirs(f"{model_path}/snapshots", exist_ok=True)
+    snapshot_count = len(os.listdir(f"{model_path}/snapshots"))
+    shutil.copy(
+        f"{model_path}/{model_path.split('/')[-1]}.zip",
+        f"{model_path}/snapshots/snapshot_{snapshot_count + 1}.zip"
+    )
 if __name__=="__main__":
     """
     Basic two part loop to train a new model from scratch with updated logging. 
