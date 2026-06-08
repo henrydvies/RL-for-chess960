@@ -30,7 +30,7 @@ Chess960 randomises the back rank piece positions across 960 possible configurat
 RL-FOR-Chess960/
 ├── game/
 │   ├── environment.py          # Gym-compatible Chess960 environment
-│   └── board_representation.py # Board to tensor conversion (8x8x12)
+│   └── board_representation.py # Board to tensor conversion (8x8x20)
 ├── engines/
 │   ├── random/                 # Random agent
 │   ├── minimax/                # Minimax agent with material evaluation
@@ -52,11 +52,17 @@ RL-FOR-Chess960/
 
 ## Board Representation
 
-The board is encoded as an **8x8x12 tensor**:
+The board is encoded as an **8x8x20 tensor**:
 - 8x8 for board squares
-- 12 layers: 6 piece types x 2 colours
-- White pieces: layers 0-5, Black pieces: layers 6-11
-- Each cell is binary (0 or 1)
+- Layers 0-5: White pieces (pawn, knight, bishop, rook, queen, king)
+- Layers 6-11: Black pieces (same order)
+- Layer 12: Turn indicator (1s if it's the agent's move)
+- Layers 13-16: Castling rights (W kingside, W queenside, B kingside, B queenside)
+- Layer 17: En passant square
+- Layer 18: Repetition indicator
+- Layer 19: Move count threshold (1s if past move 50)
+
+When the agent plays black, the board is mirrored (vertical flip + piece colour layer swap + castling layer swap) so the agent always sees from its own perspective. This is standard practice for chess RL — see [Improvements in v3](#improvements-in-v3).
 
 ## Action Space
 
@@ -95,6 +101,17 @@ Applied fix, and as it gave opportunity to train new agent implemented some arch
 
 ---
 
+## Improvements in v3
+
+v2 training plateaued completely: ep_rew_mean vs Minimax stayed flat at ~-0.88 over 8M timesteps with no learning visible. Investigation found two further bugs that the v2 improvements had masked or introduced. v3 addresses these and adds a stronger architecture.
+
+- **Board perspective normalisation** — v2 introduced random colour assignment but the board tensor was always rendered from white's perspective while the action mask used the current player's perspective. The network saw mismatched inputs and couldn't learn consistently. v3 mirrors the board (vertical flip + piece layer swap + castling layer swap) when the agent plays black, so the agent always sees from its own perspective. Standard practice in chess RL.
+- **Action mirroring** — paired with the board fix. Actions are translated between network frame (current player's perspective) and real board frame at the env boundary. Keeps all `take_turn()` consistent.
+- **Step counter fix** — temperature decay used `self.step_counter` but the counter was never incremented. Temperature was permanently stuck at 0.2, meaning 20% of opponent moves were random across all training. Now decays correctly from 0.2 → 0.05.
+- **ResNet architecture** — replaced the 2-layer CNN with a 6-block residual network (~14 layers, 64 channels). Skip connections enable deeper training; padding=1 preserves 8×8 spatial dimensions throughout.
+
+---
+
 ## Training Results
 
 ### v1 (baseline — 12-plane representation)
@@ -113,22 +130,15 @@ Applied fix, and as it gave opportunity to train new agent implemented some arch
 #### Performance vs Stockfish
 <img src="visualisation/rl_agent_v2/StockfishAgent.png" width="500"/>
 
+### v3 (bug fixes + resNet)
+
+#### Performance vs Minimax
+<img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="500"/>
+
+#### Performance vs Stockfish
+<img src="visualisation/rl_agent_v3/StockfishAgent.png" width="500"/>
+
 *Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
-
----
-
-## Current Elo Ratings
-
-ELo only based on interactions between these agents, not a true FIDE elo rating.
-
-| Agent | Elo |
-|---|---|
-| RandomAgent | ~50 |
-| rlAgent | ~125 (improving) |
-| MinimaxAgent | ~200 |
-| StockfishAgent (depth 1) | ~820 |
-
-*Elo tracked dynamically using evaluation games between agents after each training phase.*
 
 ---
 
@@ -163,7 +173,6 @@ Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avo
 - **Queen-only promotion** — the agent always promotes to queen. (In some cases a knight promotion can be better).
 - **Endgame conversion** — the agent struggles to convert winning endgames, often drawing by repetition due to sparse rewards.
 - **Training scale** — significantly below production RL chess systems (AlphaZero used ~56M timesteps on 5,000 TPUs).
-- **White only (training)** — the agent trains as white. Self-play exposes it to both colours at inference time.
 - **No MCTS** — inference uses greedy policy sampling rather than Monte Carlo Tree Search, limiting tactical depth at play time.
 
 ---
@@ -192,7 +201,7 @@ python self_play_game_pgn.py
 
 ### Plot training curves
 ```bash
-python -m evaluation.plot_training --model models/rl_agent_v1
+python -m evaluation.plot_training --model models/rl_agent_v3
 ```
 
 ---
@@ -221,5 +230,4 @@ python -m evaluation.plot_training --model models/rl_agent_v1
 - **Reward shaping** — small intermediate rewards for material gain to speed up tactical learning while preserving the emergent learning premise
 - **Longer survival reward** — rewarding the agent for surviving more moves to discourage early collapse
 - **MCTS at inference** — replacing greedy policy sampling with Monte Carlo Tree Search for stronger play at inference time without retraining
-- **ResNet architecture** — replacing the CNN with a residual network for richer positional feature learning
 - **Meta-learning** — training a reward function that maximises learning speed rather than hand-designing rewards, inspired by the idea of self-improving reward mechanisms
