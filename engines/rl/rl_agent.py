@@ -7,7 +7,8 @@ from utils.action_masks import action_masks as action_masks_helper
 from numpy import newaxis as new_axis
 from sb3_contrib import MaskablePPO
 import os
-
+import chess
+from utils.action_masks import mirror_action
 class rlAgent:
     def __init__(self, environment):
         """
@@ -59,7 +60,10 @@ class rlAgent:
         tensor_board = board_to_tensor(board)
         masks = action_masks_helper(board)
         # Get action 
-        action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0][0]
+        action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0][0]#
+        
+        if board.turn == chess.BLACK:
+            action = mirror_action(action)
         
         return action
         

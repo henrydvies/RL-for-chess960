@@ -11,10 +11,12 @@ Originally network had to infer game state, like whose turn, castling, repetitio
 import numpy as np
 import chess
 
-def board_to_tensor(board):
+def board_to_tensor(board, player_colour=None):
     """
     Take in a board and convert to tensor representation
     """
+    if player_colour is None:
+        player_colour = board.turn
     tensor_board = np.zeros((8, 8, 20), dtype=np.int8)
     
     # Loop over all squares converting piece to tensor array.
@@ -36,8 +38,8 @@ def board_to_tensor(board):
         
     # After iteration add new planes: Turn indicator, White/black king/queenside castling rights, en passant square, repetition indicator, move count threshold
     
-    # L12: Turn indicator
-    if board.turn == chess.WHITE:
+    # L12: Turn indicator, 1 = your move
+    if board.turn == player_colour:
         tensor_board[:, :, 12] = 1
 
     # 13-16: Castling rights
@@ -63,7 +65,18 @@ def board_to_tensor(board):
     # L19 Move count threshold (1s if past move 50)
     if board.fullmove_number >= 50:
         tensor_board[:, :, 19] = 1
-    
+        
+        
+    # Handle black side representation
+    if player_colour == chess.BLACK:
+        # Vertical flip
+        tensor_board = tensor_board[::-1, :, :]
+
+        # Swap piece colour layers
+        tensor_board[:, :, 0:6], tensor_board[:, :, 6:12] = tensor_board[:, :, 6:12].copy(), tensor_board[:, :, 0:6].copy()
+
+        # Castling rights colour swaps
+        tensor_board[:, :, 13:15], tensor_board[:, :, 15:17] = tensor_board[:, :, 15:17].copy(), tensor_board[:, :, 13:15].copy()
     return tensor_board
         
         

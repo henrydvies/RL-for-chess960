@@ -138,7 +138,7 @@ if __name__=="__main__":
         (RandomAgent, 10000, None),
         (MinimaxAgent, 50000, None)
     ]
-    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v2")
+    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v3")
     
     # Main training loop to run overnight
     main_config = [
@@ -147,4 +147,4 @@ if __name__=="__main__":
         (rlAgent, 170000, "models/rl_agent_v2")
     ]
     while True:
-        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v2")
+        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v3")

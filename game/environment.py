@@ -7,8 +7,10 @@ from random import randint
 import numpy as np
 from .board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
+from utils.action_masks import mirror_action, mirror_square
 import random
 from engines.random.random_agent import RandomAgent
+
 
 def pos_seed():
     # Random seed for chess960 setup
@@ -80,8 +82,12 @@ class ChessEnvironment(gym.Env):
         """
         Takes the next step, then takes opponents move.
         """
+        if self.board.turn == chess.BLACK:
+            action = mirror_action(int(action))
+    
+
         move = self._convert_to_move(action)
-        
+        self.step_counter += 1
         # Handle illegal move
         if move not in self.board.legal_moves:
             return (board_to_tensor(self.board), -1, True, False, {})
