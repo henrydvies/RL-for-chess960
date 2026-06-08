@@ -7,7 +7,8 @@ from utils.action_masks import action_masks as action_masks_helper
 from numpy import newaxis as new_axis
 from sb3_contrib import MaskablePPO
 import os
-
+import chess
+from utils.action_masks import mirror_action
 class rlAgent:
     def __init__(self, environment):
         """
@@ -17,7 +18,15 @@ class rlAgent:
             features_extractor_class=PolicyNetwork,
             features_extractor_kwargs=dict(features_dim=256)
         )
-        self.model = MaskablePPO("CnnPolicy", environment, policy_kwargs=policy_kwargs, verbose=0)
+        self.model = MaskablePPO(
+            "CnnPolicy", 
+            environment, 
+            policy_kwargs=policy_kwargs, 
+            verbose=0,
+            gamma=0.995, # Discount factor, longer chess games are devalued with defaults.
+            ent_coef=0.01, # entropy bonus, forces exploration
+            n_steps=4096, # More samples per update - not applied to agent_v1
+        )
         
     def train(self, total_timesteps, callback=None):
         """
@@ -41,6 +50,8 @@ class rlAgent:
         """
         if os.path.exists(model_path + ".zip"):
             self.model = self.model.load(model_path)
+            self.model.gamme = 0.995
+            self.model.ent_coef = 0.01
         
     def take_turn(self, board):
         """
@@ -49,7 +60,10 @@ class rlAgent:
         tensor_board = board_to_tensor(board)
         masks = action_masks_helper(board)
         # Get action 
-        action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0][0]
+        action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0][0]#
+        
+        if board.turn == chess.BLACK:
+            action = mirror_action(action)
         
         return action
         

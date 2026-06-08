@@ -13,6 +13,10 @@ import wandb
 from evaluation.training_logger import TrainingLogger
 import numpy as np
 
+import shutil
+import os
+import random
+
 def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", opponent_agent_model_path=None, total_timesteps=0, use_wandb=False):
     """
     Run the training loop vs any opponent
@@ -32,7 +36,12 @@ def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", op
         agent.model.set_env(environment)
         
     if opponent_agent_model_path:
-        opponent.load(opponent_agent_model_path)
+        # Handle snapshot naming convention
+        if os.path.exists(f"{opponent_agent_model_path}.zip"):
+            opponent.load(opponent_agent_model_path)
+        else:
+            derived_opponent_path = f"{opponent_agent_model_path}/{opponent_agent_model_path.split('/')[-1]}"
+            opponent.load(derived_opponent_path)
         
     # Handle wandb logging
     callback = None
@@ -77,13 +86,22 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
         else:
             temp_env = None
             opponent_instance = opponent_agent()
-            
+        
+        # Fictitious Self-Play: x% of the time play a random old version to keep diversity in training
+        fst_chance = 0.2
+        chosen_opponent_path = opponent_model_path
+        if opponent_agent == rlAgent and os.path.exists(f"{model_path}/snapshots"):
+            snapshots = os.listdir(f"{model_path}/snapshots")
+            if snapshots and random.random() < fst_chance:
+                chosen = random.choice(snapshots).replace(".zip", "")
+                chosen_opponent_path = f"{model_path}/snapshots/{chosen}"
+        
         # Loop to run timesteps_iteration_cap before reloading model, to ensure it trains against up to date model
         while timesteps > timesteps_iteration_cap:
-            run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps_iteration_cap, use_wandb=use_wandb)
+            run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=chosen_opponent_path, total_timesteps=timesteps_iteration_cap, use_wandb=use_wandb)
             timesteps -= timesteps_iteration_cap
         
-        run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=opponent_model_path, total_timesteps=timesteps, use_wandb=use_wandb)
+        run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=chosen_opponent_path, total_timesteps=timesteps, use_wandb=use_wandb)
         
         # Update elo
         if not(temp_env):
@@ -99,6 +117,14 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
         
         elo_tracker.save()
         
+        # For snapshots to be used in FSP
+        os.makedirs(f"{model_path}/snapshots", exist_ok=True)
+        snapshot_count = len(os.listdir(f"{model_path}/snapshots"))
+        shutil.copy(
+            f"{model_path}/{model_path.split('/')[-1]}.zip",
+            f"{model_path}/snapshots/snapshot_{snapshot_count + 1}.zip"
+        )
+        
         # For stockfish to close correctly
         if hasattr(opponent_instance, 'close'):
             opponent_instance.close()
@@ -112,15 +138,13 @@ if __name__=="__main__":
         (RandomAgent, 10000, None),
         (MinimaxAgent, 50000, None)
     ]
-    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v1")
+    handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v3")
     
     # Main training loop to run overnight
     main_config = [
         (MinimaxAgent, 20000, None),
-        (StockfishAgent, 50000, None),
-        (rlAgent, 150000, "models/rl_agent_v1")
+        (StockfishAgent, 30000, None),
+        (rlAgent, 170000, "models/rl_agent_v2")
     ]
     while True:
-        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v1")
-    
-    
+        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v3")

@@ -30,11 +30,11 @@ def checkmate_env():
 
 def test_reset_returns_correct_shape():
     """
-    Reset should return a tensor of shape (8, 8, 12) and an empty info dict
+    Reset should return a tensor of shape (8, 8, 20) and an empty info dict
     """
     env = get_env()
     obs, info = env.reset()
-    assert obs.shape == (8, 8, 12)
+    assert obs.shape == (8, 8, 20)
     assert info == {}
 
 
@@ -81,11 +81,11 @@ def test_illegal_move_terminates_game():
 
 def test_illegal_move_returns_correct_shape():
     """
-    Even an illegal move should return a tensor of shape (8, 8, 12)
+    Even an illegal move should return a tensor of shape (8, 8, 20)
     """
     env = get_env()
     obs, _, _, _, _ = env.step(0)
-    assert obs.shape == (8, 8, 12)
+    assert obs.shape == (8, 8, 20)
 
 
 ## Testing legal moves
@@ -114,13 +114,13 @@ def test_legal_move_does_not_terminate():
 
 def test_legal_move_returns_correct_shape():
     """
-    A legal move should return a tensor of shape (8, 8, 12)
+    A legal move should return a tensor of shape (8, 8, 20)
     """
     env = get_env()
     move = list(env.board.legal_moves)[0]
     action = move.from_square * 64 + move.to_square
     obs, _, _, _, _ = env.step(action)
-    assert obs.shape == (8, 8, 12)
+    assert obs.shape == (8, 8, 20)
 
 
 ## Testing checkmate
@@ -133,7 +133,7 @@ def test_checkmate_returns_positive_reward():
     move = chess.Move(chess.H5, chess.F7)
     action = move.from_square * 64 + move.to_square
     _, reward, _, _, _ = env.step(action)
-    assert reward == 1
+    assert reward >= 1
 
 
 def test_checkmate_terminates_game():

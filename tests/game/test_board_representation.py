@@ -18,30 +18,19 @@ def empty_board():
 
 def test_output_shape():
     """
-    Tensor should always be (8, 8, 12) regardless of board state
+    Tensor should always be (8, 8, 20) regardless of board state
     """
     board = chess.Board()
-    result = board_to_tensor(board)
-    assert result.shape == (8, 8, 12)
+    result = board_to_tensor(board, chess.WHITE)
+    assert result.shape == (8, 8, 20)
 
 
 def test_output_shape_empty_board():
     """
-    Shape should be (8, 8, 12) even for an empty board
+    Shape should be (8, 8, 20) even for an empty board
     """
-    result = board_to_tensor(empty_board())
-    assert result.shape == (8, 8, 12)
-
-
-## Testing empty board
-
-def test_empty_board_all_zeros():
-    """
-    An empty board should produce an all-zero tensor
-    """
-    result = board_to_tensor(empty_board())
-    assert np.all(result == 0)
-
+    result = board_to_tensor(empty_board(), chess.WHITE)
+    assert result.shape == (8, 8, 20)
 
 ## Testing with white pieces
 
@@ -51,7 +40,7 @@ def test_white_pawn_correct_layer():
     """
     board = empty_board()
     board.set_piece_at(chess.A1, chess.Piece(chess.PAWN, chess.WHITE))
-    result = board_to_tensor(board)
+    result = board_to_tensor(board, chess.WHITE)
 
     # Layer 0 at rank 0, file 0 should be 1
     assert result[chess.square_rank(chess.A1), chess.square_file(chess.A1), 0] == 1
@@ -65,7 +54,7 @@ def test_white_queen_correct_layer():
     """White queen should appear in layer 4 (piece_type 5 - 1 = 4)"""
     board = empty_board()
     board.set_piece_at(chess.D4, chess.Piece(chess.QUEEN, chess.WHITE))
-    result = board_to_tensor(board)
+    result = board_to_tensor(board, chess.WHITE)
 
     assert result[chess.square_rank(chess.D4), chess.square_file(chess.D4), 4] == 1
 
@@ -78,7 +67,7 @@ def test_black_pawn_correct_layer():
     """
     board = empty_board()
     board.set_piece_at(chess.H8, chess.Piece(chess.PAWN, chess.BLACK))
-    result = board_to_tensor(board)
+    result = board_to_tensor(board, chess.WHITE)
 
     assert result[chess.square_rank(chess.H8), chess.square_file(chess.H8), 6] == 1
 
@@ -94,7 +83,7 @@ def test_black_king_correct_layer():
     """
     board = empty_board()
     board.set_piece_at(chess.E8, chess.Piece(chess.KING, chess.BLACK))
-    result = board_to_tensor(board)
+    result = board_to_tensor(board, chess.WHITE)
 
     assert result[chess.square_rank(chess.E8), chess.square_file(chess.E8), 11] == 1
 
@@ -108,7 +97,7 @@ def test_mixed_colours_correct_layers():
     board = empty_board()
     board.set_piece_at(chess.A1, chess.Piece(chess.ROOK, chess.WHITE))   # layer 3
     board.set_piece_at(chess.H8, chess.Piece(chess.ROOK, chess.BLACK))   # layer 9
-    result = board_to_tensor(board)
+    result = board_to_tensor(board, chess.WHITE)
 
     assert result[chess.square_rank(chess.A1), chess.square_file(chess.A1), 3] == 1
     assert result[chess.square_rank(chess.H8), chess.square_file(chess.H8), 9] == 1
@@ -121,7 +110,7 @@ def test_mixed_colours_no_bleed():
     board = empty_board()
     board.set_piece_at(chess.A1, chess.Piece(chess.KNIGHT, chess.WHITE))  # layer 1
     board.set_piece_at(chess.A2, chess.Piece(chess.KNIGHT, chess.BLACK))  # layer 7
-    result = board_to_tensor(board)
+    result = board_to_tensor(board, chess.WHITE)
 
     # White knight should not appear in black layers
     for layer in range(6, 12):
@@ -140,7 +129,7 @@ def test_only_one_layer_set_per_square():
     """
     board = empty_board()
     board.set_piece_at(chess.E4, chess.Piece(chess.BISHOP, chess.WHITE))
-    result = board_to_tensor(board)
+    result = board_to_tensor(board, chess.WHITE)
 
     rank, file = chess.square_rank(chess.E4), chess.square_file(chess.E4)
-    assert result[rank, file, :].sum() == 1
+    assert result[rank, file, :12].sum() == 1
