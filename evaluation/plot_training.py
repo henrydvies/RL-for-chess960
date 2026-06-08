@@ -83,6 +83,6 @@ def plot_training(model_folder):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot training progress from log file")
-    parser.add_argument("--model", type=str, default="models/rl_agent_v1", help="Path to model folder")
+    parser.add_argument("--model", type=str, default="models/rl_agent_v3", help="Path to model folder")
     args = parser.parse_args()
     plot_training(args.model)
