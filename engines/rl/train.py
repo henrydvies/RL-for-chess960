@@ -161,14 +161,40 @@ def get_ep_rew_mean(agent, opponent, n_games=10):
     
 if __name__=="__main__":
     """
-    Basic two part loop to train a new model from scratch with updated logging. 
+    Dynamic loop that selects training opponents based of performance.
     """
-    main_config = [
-        (RandomAgent, 50000, None),
-        (MinimaxAgent, 50000, None),
-        (StockfishAgent, 50000, None),
-        (rlAgent, 600000, "models/rl_agent_v3")
-    ]
-    
+
+
     while True:
+        # Dynamic training designed to be ran and left, only plays opponent if it will learn from it, so no stockfish when it just looses every game etc
+        eval_agent = rlAgent(ChessEnvironment(RandomAgent()))
+        eval_agent.load("models/rl_agent_v3/rl_agent_v3")
+        
+        random_score = get_ep_rew_mean(eval_agent, RandomAgent(), n_games=10)
+        minimax_score = get_ep_rew_mean(eval_agent, MinimaxAgent(), n_games=10)
+        stockfish_score = get_ep_rew_mean(eval_agent, StockfishAgent(), n_games=10)
+        StockfishAgent().close()
+        
+        # If more opponents then less time on self play for equal loop length
+        # This also means that early on when it arguably needs more random/ minimax it does it more frequently due to less self play.
+        opponents_added = sum([
+            random_score <= 0.5,
+            -0.8 <= minimax_score <= 0.5,
+            stockfish_score > -0.8
+        ])
+        self_play_timesteps = 250000 - (50000 * opponents_added)
+        
+        main_config = [
+            (rlAgent, self_play_timesteps, "models/rl_agent_v3"),
+        ]
+        
+        if random_score <= 0.5:
+            main_config.insert(0, (RandomAgent, 50000, None))
+        
+        if -0.7 <= minimax_score <= 0.6:
+            main_config.insert(0, (MinimaxAgent, 50000, None))
+        
+        if stockfish_score > -0.8:
+            main_config.append((StockfishAgent, 100000, None))
+        
         handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v3")
