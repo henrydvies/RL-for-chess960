@@ -116,29 +116,40 @@ v2 training plateaued completely: ep_rew_mean vs Minimax stayed flat at ~-0.88 o
 
 ### v1 (baseline — 12-plane representation)
 
+#### Performance vs Random
+<img src="visualisation/rl_agent_v1/RandomAgent.png" width="300"/>
+
 #### Performance vs Minimax
-<img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="500"/>
+<img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="300"/>
 
 #### Performance vs Stockfish
-<img src="visualisation/rl_agent_v1/StockfishAgent.png" width="500"/>
+<img src="visualisation/rl_agent_v1/StockfishAgent.png" width="300"/>
 
 ### v2 (richer representation + FSP)
 
+#### Performance vs Random
+<img src="visualisation/rl_agent_v2/RandomAgent.png" width="300"/>
+
 #### Performance vs Minimax
-<img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="500"/>
+<img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="300"/>
 
 #### Performance vs Stockfish
-<img src="visualisation/rl_agent_v2/StockfishAgent.png" width="500"/>
+<img src="visualisation/rl_agent_v2/StockfishAgent.png" width="300"/>
 
 ### v3 (bug fixes + resNet)
 
+#### Performance vs Random
+<img src="visualisation/rl_agent_v3/RandomAgent.png" width="300"/>
+
 #### Performance vs Minimax
-<img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="500"/>
+<img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="300"/>
 
 #### Performance vs Stockfish
-<img src="visualisation/rl_agent_v3/StockfishAgent.png" width="500"/>
+<img src="visualisation/rl_agent_v3/StockfishAgent.png" width="300"/>
 
 *Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
+
+*Note: ep_rew_mean methodology changed across versions. v1 uses SB3 episode buffer (draw=0). v2 introduced a draw penalty (-0.1) in the reward function, which depresses ep_rew_mean values: the apparent lack of improvement in v2 may partly reflect frequent draws being penalised rather than genuine regression, making v2 harder to evaluate fairly. v3 switches to 15 post-run evaluation games (win=+1, draw=0, loss=-1) from ~3M timesteps. Values are not directly comparable across versions due to this.*
 
 ---
 

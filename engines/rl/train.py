@@ -12,7 +12,7 @@ from evaluation.evaluator import evaluate
 import wandb
 from evaluation.training_logger import TrainingLogger
 import numpy as np
-
+from evaluation.evaluator import play_single_game
 import shutil
 import os
 import random
@@ -21,65 +21,77 @@ def run_training(agent_class, opponent, agent_model_folder="models/rl_agent", op
     """
     Run the training loop vs any opponent
     """
-    # Extract file locations
     agent_model_path = f"{agent_model_folder}/{agent_model_folder.split('/')[-1]}"
     log_path = f"{agent_model_folder}/training_log.json"
     
-    # Create environment
     environment = ChessEnvironment(opponent)
     
     agent = agent_class(environment)
     
-    # Load agent
     if agent_model_path:
         agent.load(agent_model_path)
         agent.model.set_env(environment)
         
     if opponent_agent_model_path:
-        # Handle snapshot naming convention
         if os.path.exists(f"{opponent_agent_model_path}.zip"):
             opponent.load(opponent_agent_model_path)
         else:
             derived_opponent_path = f"{opponent_agent_model_path}/{opponent_agent_model_path.split('/')[-1]}"
             opponent.load(derived_opponent_path)
         
-    # Handle wandb logging
     callback = None
     if use_wandb:
         wandb.init(project="rl-chess960", sync_tensorboard=True)
         callback = WandbCallback()
     
     logger = TrainingLogger(log_path)
-    colour_distrubution = {"white": 0, "black": 0}
+    colour_distribution = {"white": 0, "black": 0}
     ep_rew_mean = None
     
-    # Run training
     try:
         agent.train(total_timesteps, callback=callback)
         
-        # Get colour played
-        colour_distrubution = {"white": environment.white_episodes, "black": environment.black_episodes}
-        # Get ep_mean for last few
-        if agent.model.ep_info_buffer:
-            ep_rew_mean = np.mean([ep["r"] for ep in agent.model.ep_info_buffer])
+        colour_distribution = {"white": environment.white_episodes, "black": environment.black_episodes}
+        ep_rew_mean = None
         
     finally:
         agent.save(agent_model_path)
         
-        # Logging
-        logger.update_log(total_timesteps, opponent, ep_rew_mean, colour_distrubution)
+        logger.update_log(total_timesteps, opponent, ep_rew_mean, colour_distribution)
         logger.save()
         if use_wandb:
             wandb.finish()
+
+def _evaluate_all_opponents(agent_class, model_path):
+    """
+    Evaluate current model vs all opponents and log as 0-timestep entries.
+    """
+    log_path = f"{model_path}/training_log.json"
+    logger = TrainingLogger(log_path)
+
+    eval_agent = agent_class(ChessEnvironment(RandomAgent()))
+    eval_agent.load(f"{model_path}/{model_path.split('/')[-1]}")
+
+    for eval_opp in [RandomAgent(), MinimaxAgent(), StockfishAgent()]:
+        score = get_ep_rew_mean(eval_agent, eval_opp, n_games=15)
+        logger.update_log(0, eval_opp, score)
+        logger.save()
+        if hasattr(eval_opp, 'close'):
+            eval_opp.close()
+
+    self_play_opp = agent_class(ChessEnvironment(RandomAgent()))
+    self_play_opp.load(f"{model_path}/{model_path.split('/')[-1]}")
+    score = get_ep_rew_mean(eval_agent, self_play_opp, n_games=15)
+    logger.update_log(0, self_play_opp, score)
+    logger.save()
 
 def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (MinimaxAgent, 0, None), (rlAgent, 10000, "models/rl_agent")], model_path="models/rl_agent", use_wandb=True):
     """
     Handle the training loop, along with evaluation.
     """
     elo_tracker = EloTracker()
-    timesteps_iteration_cap = 20000
+    timesteps_iteration_cap = 50000
     for opponent_agent, timesteps, opponent_model_path in config:
-        # Handle rl agent
         if opponent_agent == rlAgent:
             temp_env = ChessEnvironment(RandomAgent())
             opponent_instance = rlAgent(temp_env)
@@ -87,7 +99,6 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
             temp_env = None
             opponent_instance = opponent_agent()
         
-        # Fictitious Self-Play: x% of the time play a random old version to keep diversity in training
         fst_chance = 0.2
         chosen_opponent_path = opponent_model_path
         if opponent_agent == rlAgent and os.path.exists(f"{model_path}/snapshots"):
@@ -96,14 +107,14 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
                 chosen = random.choice(snapshots).replace(".zip", "")
                 chosen_opponent_path = f"{model_path}/snapshots/{chosen}"
         
-        # Loop to run timesteps_iteration_cap before reloading model, to ensure it trains against up to date model
         while timesteps > timesteps_iteration_cap:
             run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=chosen_opponent_path, total_timesteps=timesteps_iteration_cap, use_wandb=use_wandb)
             timesteps -= timesteps_iteration_cap
+            _evaluate_all_opponents(agent_class, model_path)
         
         run_training(agent_class=agent_class, opponent=opponent_instance, agent_model_folder=model_path, opponent_agent_model_path=chosen_opponent_path, total_timesteps=timesteps, use_wandb=use_wandb)
+        _evaluate_all_opponents(agent_class, model_path)
         
-        # Update elo
         if not(temp_env):
             temp_env = ChessEnvironment(RandomAgent())
         elo_agent = rlAgent(temp_env)
@@ -111,38 +122,53 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
         
         elo_tracker = evaluate(elo_agent, opponent_instance, n_games=10, tracker=elo_tracker)
 
-        # For self-play also evaluate random vs minimax
         if opponent_agent == rlAgent:
             elo_tracker = evaluate(RandomAgent(), MinimaxAgent(), n_games=10, tracker=elo_tracker)
         
         elo_tracker.save()
         
-        # For stockfish to close correctly
         if hasattr(opponent_instance, 'close'):
             opponent_instance.close()
-        # For snapshots to be used in FSP
     os.makedirs(f"{model_path}/snapshots", exist_ok=True)
     snapshot_count = len(os.listdir(f"{model_path}/snapshots"))
     shutil.copy(
         f"{model_path}/{model_path.split('/')[-1]}.zip",
         f"{model_path}/snapshots/snapshot_{snapshot_count + 1}.zip"
     )
+    
+def get_ep_rew_mean(agent, opponent, n_games=10):
+    """
+    Play n_games between agent and opponent.
+    Returns (wins - losses) / n_games. Win=+1, Draw=0, Loss=-1.
+    Cleaner than SB3 episode buffer which mixes opponents and includes draw penalty.
+    """
+    wins, draws, losses = 0, 0, 0
+    for i in range(n_games):
+        if i % 2 == 0:
+            result = play_single_game(agent, opponent)
+            agent_won = result is True
+            agent_lost = result is False
+        else:
+            result = play_single_game(opponent, agent)
+            agent_won = result is False
+            agent_lost = result is True
+        
+        if agent_won: wins += 1
+        elif agent_lost: losses += 1
+        else: draws += 1
+    
+    return (wins - losses) / n_games
+    
 if __name__=="__main__":
     """
     Basic two part loop to train a new model from scratch with updated logging. 
     """
-    # Initial random and minimax training for baseline
-    initial_config = [
-        (RandomAgent, 10000, None),
-        (MinimaxAgent, 50000, None)
-    ]
-    #handle_training(agent_class=rlAgent, config=initial_config, use_wandb=False, model_path="models/rl_agent_v3")
-    
-    # Main training loop to run overnight
     main_config = [
-        (MinimaxAgent, 20000, None),
-        (StockfishAgent, 30000, None),
-        (rlAgent, 170000, "models/rl_agent_v3")
+        (RandomAgent, 50000, None),
+        (MinimaxAgent, 50000, None),
+        (StockfishAgent, 50000, None),
+        (rlAgent, 600000, "models/rl_agent_v3")
     ]
+    
     while True:
         handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v3")

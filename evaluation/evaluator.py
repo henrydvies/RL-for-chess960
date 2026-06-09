@@ -4,14 +4,14 @@ play N games between agents and update Elo ratings.
 import chess
 from engines.random.random_agent import RandomAgent
 from evaluation.elo_tracker import EloTracker
-
+import random
 
 def play_single_game(white_agent, black_agent):
     """
     Play a single game between two agents.
     Returns True if white wins, False if black wins, None for draw.
     """
-    board = chess.Board()
+    board = chess.Board.from_chess960_pos(random.randint(0, 959))
 
     move_count = 0
     while not board.is_game_over() and move_count < 300:
