@@ -114,38 +114,13 @@ v2 training plateaued completely: ep_rew_mean vs Minimax stayed flat at ~-0.88 o
 
 ## Training Results
 
-### v1 (baseline — 12-plane representation)
+| | v1 (baseline) | v2 (richer planes + FSP) | v3 (bug fixes + ResNet) |
+|---|---|---|---|
+| **vs Random** | <img src="visualisation/rl_agent_v1/RandomAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/RandomAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/RandomAgent.png" width="300"/> |
+| **vs Minimax** | <img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="300"/> |
+| **vs Stockfish** | <img src="visualisation/rl_agent_v1/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/StockfishAgent.png" width="300"/> |
 
-#### Performance vs Random
-<img src="visualisation/rl_agent_v1/RandomAgent.png" width="300"/>
-
-#### Performance vs Minimax
-<img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="300"/>
-
-#### Performance vs Stockfish
-<img src="visualisation/rl_agent_v1/StockfishAgent.png" width="300"/>
-
-### v2 (richer representation + FSP)
-
-#### Performance vs Random
-<img src="visualisation/rl_agent_v2/RandomAgent.png" width="300"/>
-
-#### Performance vs Minimax
-<img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="300"/>
-
-#### Performance vs Stockfish
-<img src="visualisation/rl_agent_v2/StockfishAgent.png" width="300"/>
-
-### v3 (bug fixes + resNet)
-
-#### Performance vs Random
-<img src="visualisation/rl_agent_v3/RandomAgent.png" width="300"/>
-
-#### Performance vs Minimax
-<img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="300"/>
-
-#### Performance vs Stockfish
-<img src="visualisation/rl_agent_v3/StockfishAgent.png" width="300"/>
+*Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
 
 *Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
 
