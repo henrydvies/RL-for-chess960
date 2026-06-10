@@ -53,6 +53,7 @@ RL-FOR-Chess960/
 ## Board Representation
 
 The board is encoded as an **8x8x20 tensor**:
+
 - 8x8 for board squares
 - Layers 0-5: White pieces (pawn, knight, bishop, rook, queen, king)
 - Layers 6-11: Black pieces (same order)
@@ -66,9 +67,11 @@ When the agent plays black, the board is mirrored (vertical flip + piece colour 
 
 ## Action Space
 
-Actions are integers 0-4095 encoding all 64x64 from/to square combinations:
-- `from_square = action // 64`
-- `to_square = action % 64`
+Actions follow the AlphaZero-style encoding: **8x8x73 = 4672 discrete actions**, one set of 73 movement planes per from-square:
+
+- Planes 0-55: queen-like moves (8 directions x 7 distances)
+- Planes 56-63: knight moves
+- Planes 64-72: underpromotions (knight/bishop/rook x 3 capture directions); queen promotion uses the normal queen-move plane
 
 Action masking (via `MaskablePPO`) ensures only legal moves are sampled during training and inference.
 
@@ -86,6 +89,7 @@ The agent is trained using a staged curriculum:
 Training metrics (ep_rew_mean) and Elo ratings are logged per run and updated automatically.
 
 ---
+
 ## Improvements in v2
 
 Discovered a large bug present for all of v1 training, where opponent model wasn't loading, meaning self play was actually against the random agent.
@@ -93,7 +97,7 @@ Applied fix, and as it gave opportunity to train new agent implemented some arch
 
 - **Bug fix** — opponent model loading was failing silently during self-play, meaning v1's "self-play" training.
 - **More input planes** — expanded board representation from 8x8x12 to 8x8x20, adding turn indicator, castling rights (4 planes), en passant, repetition, and move count threshold.
-- **Fictitious Self-Play** — opponent in self-play sampled 20% of the time from a pool of past snapshots, addressing strategy cycling. 
+- **Fictitious Self-Play** — opponent in self-play sampled 20% of the time from a pool of past snapshots, addressing strategy cycling.
 - **PPO hyperparameter tuning** — gamma=0.995 (default 0.99) for long chess games, ent_coef=0.01 (default 0) for explicit exploration regularisation, n_steps=4096 for more samples per update.
 - **Draw penalty** — small negative reward (-0.1) for draws to discourage repetition-based stalling.
 - **Random colour assignment** — agent trains as both white and black, balanced 50/50.
@@ -112,28 +116,43 @@ v2 training plateaued completely: ep_rew_mean vs Minimax stayed flat at ~-0.88 o
 
 ---
 
+## Improvements in v4
+
+v3 showed slow learning improvements and was slow to run, it may have performed well but did not recieve as much training. Improvements in v4 were focused on optimisation and improvements.
+
+- **AlphaZero-style action encoding (8x8x73)** — replaced the 64x64 from/to encoding with 73 movement planes per from-square (direction x distance, knight jumps, underpromotions). Geometrically similar moves now share structure, and underpromotion is expressible for the first time.
+- **Spatial policy head** — replaced the dense policy bottleneck (flatten → linear → logits) with a 1x1 convolution producing the 8x8x73 logits directly. Board geometry is preserved all the way to the output and the head has far fewer parameters.
+- **Separate spatial value head** — replaced SB3's default single linear value layer with a dedicated 1x1 conv + dense head (AlphaZero-style), giving the value function its own non-linear capacity instead of one dot product over features shared with the policy.
+- **Batch normalisation** — added BN throughout the ResNet trunk (Conv → BN → ReLU), stabilising activations through depth.
+- **Vectorised training** — 8 parallel environments via `SubprocVecEnv`. Sample collection was the binding constraint (one CPU-bound game at a time); parallel boards give a near-linear throughput improvement.
+- **Single `learn()` per phase** — the trainer no longer tears down and reloads the model every 50k steps. Checkpointing, evaluation, and self-play opponent reloading now run through a callback, fixing temperature decay resetting each chunk and deleting a whole class of reload bugs.
+- **Claimable draws enforced** — `board.outcome(claim_draw=True)`, so threefold repetition and the fifty-move rule actually end games instead of episodes dragging to fivefold/75-move auto-draws.
+- **Loud load failures** — a missing model path now raises `FileNotFoundError` instead of silently continuing with random weights (the failure mode that invalidated v1's self-play).
+- **Temperature restricted to self-play** — random opponent moves no longer pollute the Minimax/Stockfish benchmark signal.
+- **Misc fixes** — Stockfish process leak in the evaluation loop, dead turn-indicator plane, curriculum threshold mismatch, Minimax alpha-beta pruning with correct checkmate scoring at the horizon.
+
+---
+
 ## Training Results
 
-| | v1 (baseline) | v2 (richer planes + FSP) | v3 (bug fixes + ResNet) |
-|---|---|---|---|
-| **vs Random** | <img src="visualisation/rl_agent_v1/RandomAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/RandomAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/RandomAgent.png" width="300"/> |
-| **vs Minimax** | <img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="300"/> |
-| **vs Stockfish** | <img src="visualisation/rl_agent_v1/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/StockfishAgent.png" width="300"/> |
+|                  | v1 (baseline)                                                         | v2 (richer planes + FSP)                                              | v3 (bug fixes + ResNet)                                               | v4 (action encoding + spatial heads)                                  |
+| ---------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **vs Random**    | <img src="visualisation/rl_agent_v1/RandomAgent.png" width="300"/>    | <img src="visualisation/rl_agent_v2/RandomAgent.png" width="300"/>    | <img src="visualisation/rl_agent_v3/RandomAgent.png" width="300"/>    | <img src="visualisation/rl_agent_v4/RandomAgent.png" width="300"/>    |
+| **vs Minimax**   | <img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="300"/>   | <img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="300"/>   | <img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="300"/>   | <img src="visualisation/rl_agent_v4/MinimaxAgent.png" width="300"/>   |
+| **vs Stockfish** | <img src="visualisation/rl_agent_v1/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v4/StockfishAgent.png" width="300"/> |
 
-*Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
+_Graphs show mean episode reward over total timesteps trained. Orange line is rolling average. Above 0 = net positive reward._
 
-*Graphs show mean episode reward over total timesteps trained. Orange line is 5-run rolling average. Above 0 = net positive reward.*
-
-*Note: ep_rew_mean methodology changed across versions. v1 uses SB3 episode buffer (draw=0). v2 introduced a draw penalty (-0.1) in the reward function, which depresses ep_rew_mean values: the apparent lack of improvement in v2 may partly reflect frequent draws being penalised rather than genuine regression, making v2 harder to evaluate fairly. v3 switches to 15 post-run evaluation games (win=+1, draw=0, loss=-1) from ~3M timesteps. Values are not directly comparable across versions due to this.*
+_Note: ep_rew_mean methodology changed across versions. v1 uses SB3 episode buffer (draw=0). v2 introduced a draw penalty (-0.1) in the reward function, which depresses ep_rew_mean values: the apparent lack of improvement in v2 may partly reflect frequent draws being penalised rather than genuine regression, making v2 harder to evaluate fairly. v3 switches to 15 post-run evaluation games (win=+1, draw=0, loss=-1) from ~3M timesteps. Values are not directly comparable across versions due to this._
 
 ---
 
 ## Reward Function
 
-- Win: **+1 + (200-move_count)* 0.001**
+- Win: **+1 + (200-move_count)\* 0.001**
 - Loss: **-1**
 - Draw: **-0.1**
-- Illegal move: **-1*
+- Illegal move: \*_-1_
 - Midgame move: **0**
 
 Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avoid encoding human chess knowledge into the agent. The goal is purely emergent learning.
@@ -144,9 +163,9 @@ Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avo
 
 **Pure emergent learning vs reward shaping** — chose to avoid encoding chess knowledge (material values, positional heuristics) even though this slows learning.
 
-**Action masking** — used MaskablePPO rather than penalising illegal moves heavily. Illegal moves still get -1, but masking prevents them being sampled in the first place. 
+**Action masking** — used MaskablePPO rather than penalising illegal moves heavily. Illegal moves still get -1, but masking prevents them being sampled in the first place.
 
-**Queen-only promotion** — currently always promote to queen. Knight promotions can be better at times, but done for simplicity.
+**Underpromotion support** — v1-v3 always promoted to queen for simplicity. The v4 action encoding has dedicated underpromotion planes, so the agent can learn when a knight/bishop/rook promotion is better.
 
 **Fictitious Self-Play sampling rate** — 20% past versions, 80% current model. Matches OpenAI Five's Dota 2 default. Higher past-version rates would slow learning but increase diversity.
 
@@ -156,7 +175,6 @@ Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avo
 
 ## Known Limitations
 
-- **Queen-only promotion** — the agent always promotes to queen. (In some cases a knight promotion can be better).
 - **Endgame conversion** — the agent struggles to convert winning endgames, often drawing by repetition due to sparse rewards.
 - **Training scale** — significantly below production RL chess systems (AlphaZero used ~56M timesteps on 5,000 TPUs).
 - **No MCTS** — inference uses greedy policy sampling rather than Monte Carlo Tree Search, limiting tactical depth at play time.
@@ -166,47 +184,57 @@ Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avo
 ## How to Run
 
 ### Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### Run tests
+
 ```bash
 pytest
 ```
 
 ### Train a model
+
 ```bash
 python -m engines.rl.train
 ```
 
 ### Play a game (outputs PGN for lichess/chess.com analysis)
+
 ```bash
 python self_play_game_pgn.py
 ```
 
 ### Plot training curves
+
 ```bash
-python -m evaluation.plot_training --model models/rl_agent_v3
+python -m evaluation.plot_training --model models/rl_agent_v4
 ```
 
 ---
 
 ## Roadmap
 
-### Phase 1 — Environment 
+### Phase 1 — Environment
+
 - Chess960 Gym-compatible environment, board tensor, reward function, CI
 
-### Phase 2 — Baseline Agents 
+### Phase 2 — Baseline Agents
+
 - Random agent, Minimax agent with material evaluation
 
 ### Phase 3 — RL Agent
+
 - MaskablePPO with custom CNN policy, action masking, self-play loop
 
 ### Phase 4 — Training and Evaluation
+
 - Elo tracking, Stockfish benchmarking, training curves, per-run logging
 
 ### Phase 5 — Interactive Play (planned)
+
 - CLI/GUI interface to play against the trained agent
 
 ---
