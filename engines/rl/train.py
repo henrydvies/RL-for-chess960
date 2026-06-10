@@ -8,6 +8,7 @@ from engines.rl.rl_agent import rlAgent
 from engines.stockfish.stockfish_agent import StockfishAgent
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from evaluation.elo_tracker import EloTracker
 from evaluation.evaluator import evaluate
 import wandb
@@ -19,6 +20,32 @@ import random
 
 EVAL_EVERY_TIMESTEPS = 50000
 SELF_PLAY_TEMPERATURE = 0.2
+TEMPERATURE_DECAY_STEPS = 40000
+N_ENVS = 8
+
+
+def _make_env_fn(opponent_factory, temperature):
+    """
+    Returns a function that builds a fresh env with its own opponent instance.
+    """
+    def _init():
+        return ChessEnvironment(
+            opponent_factory(),
+            temperature=temperature,
+            temperature_decay_steps=max(1, TEMPERATURE_DECAY_STEPS // N_ENVS),
+        )
+    return _init
+
+
+def _self_play_opponent_factory(opponent_model_path):
+    """
+    Builds the self-play opponent inside a worker process. On cpu to stop it using up gpu.
+    """
+    def _factory():
+        opponent = rlAgent(ChessEnvironment(RandomAgent()), device="cpu")
+        opponent.load(opponent_model_path)
+        return opponent
+    return _factory
 
 
 class PeriodicEvaluationCallback(BaseCallback):
@@ -46,9 +73,9 @@ class PeriodicEvaluationCallback(BaseCallback):
         """
         if self.num_timesteps - self.last_eval_timesteps >= self.eval_every:
             self.checkpoint(self.num_timesteps)
-            # Refresh the self-play opponent
+            # Refresh the self-play opponents in every worker process
             if self.opponent_reload_path:
-                self.opponent.load(self.opponent_reload_path)
+                self.environment.env_method("reload_opponent", self.opponent_reload_path)
             _evaluate_all_opponents(self.agent, self.model_folder)
         return True
 
@@ -61,14 +88,16 @@ class PeriodicEvaluationCallback(BaseCallback):
 
         self.agent.save(self.agent_model_path)
 
+        # Colour episode counters summed across all worker envs
+        colour_totals = {
+            "white": sum(self.environment.get_attr("white_episodes")),
+            "black": sum(self.environment.get_attr("black_episodes")),
+        }
         colour_counts = {
-            "white": self.environment.white_episodes - self.last_colour_counts["white"],
-            "black": self.environment.black_episodes - self.last_colour_counts["black"],
+            "white": colour_totals["white"] - self.last_colour_counts["white"],
+            "black": colour_totals["black"] - self.last_colour_counts["black"],
         }
-        self.last_colour_counts = {
-            "white": self.environment.white_episodes,
-            "black": self.environment.black_episodes,
-        }
+        self.last_colour_counts = colour_totals
 
         logger = TrainingLogger(f"{self.model_folder}/training_log.json")
         logger.update_log(chunk_timesteps, self.opponent, None, colour_counts)
@@ -77,15 +106,11 @@ class PeriodicEvaluationCallback(BaseCallback):
 
 def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent_agent_model_path=None, total_timesteps=0, use_wandb=False, self_play=False):
     """
-    Run one training phase vs a single opponent with a single learn() call.
-    Periodic checkpointing/evaluation happens in-process via callback.
+    Run one training phase vs a single opponent with a single learn() call over
+    N_ENVS parallel environments. Periodic checkpointing/evaluation happens
+    in-process via callback.
     """
     agent_model_path = f"{agent_model_folder}/{agent_model_folder.split('/')[-1]}"
-
-    # Random opponent moves (exploration temperature) only apply during self-play,
-    # so the benchmark opponents (random/minimax/stockfish) stay a clean signal.
-    environment = ChessEnvironment(opponent, temperature=SELF_PLAY_TEMPERATURE if self_play else 0.0)
-    agent.model.set_env(environment)
 
     resolved_opponent_path = None
     if opponent_agent_model_path:
@@ -93,9 +118,23 @@ def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent
             resolved_opponent_path = opponent_agent_model_path
         else:
             resolved_opponent_path = f"{opponent_agent_model_path}/{opponent_agent_model_path.split('/')[-1]}"
-        opponent.load(resolved_opponent_path)
+        # Fail loudly in the main process rather than inside a worker
+        if not os.path.exists(f"{resolved_opponent_path}.zip"):
+            raise FileNotFoundError(f"Opponent model not found at '{resolved_opponent_path}.zip'")
 
-    eval_callback = PeriodicEvaluationCallback(agent, opponent, environment, agent_model_folder, agent_model_path, opponent_reload_path=resolved_opponent_path)
+    # Random opponent moves (exploration temperature) only apply during self-play
+    temperature = SELF_PLAY_TEMPERATURE if self_play else 0.0
+    if self_play:
+        opponent_factory = _self_play_opponent_factory(resolved_opponent_path)
+    else:
+        opponent_factory = type(opponent)
+
+    # One env (and opponent) per worker process
+    vec_env = SubprocVecEnv([_make_env_fn(opponent_factory, temperature) for _ in range(N_ENVS)])
+
+    agent.load(agent_model_path, env=vec_env)
+
+    eval_callback = PeriodicEvaluationCallback(agent, opponent, vec_env, agent_model_folder, agent_model_path, opponent_reload_path=resolved_opponent_path if self_play else None)
     callbacks = [eval_callback]
     if use_wandb:
         wandb.init(project="rl-chess960", sync_tensorboard=True)
@@ -106,6 +145,7 @@ def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent
     finally:
         # Checkpoint and log whatever is left since the last periodic checkpoint
         eval_callback.checkpoint(agent.model.num_timesteps)
+        vec_env.close()
         if use_wandb:
             wandb.finish()
 
@@ -140,11 +180,9 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
     elo_tracker = EloTracker()
     agent_model_path = f"{model_path}/{model_path.split('/')[-1]}"
 
-    # Create the agent once and keep training it in process
-    agent = agent_class(ChessEnvironment(RandomAgent()))
-    if os.path.exists(f"{agent_model_path}.zip"):
-        agent.load(agent_model_path)
-    else:
+    # Create the agent once
+    agent = agent_class(ChessEnvironment(RandomAgent()), n_steps=4096 // N_ENVS)
+    if not os.path.exists(f"{agent_model_path}.zip"):
         print(f"No existing model at {agent_model_path}.zip - starting from fresh weights.")
         os.makedirs(model_path, exist_ok=True)
         agent.save(agent_model_path)

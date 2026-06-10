@@ -21,7 +21,7 @@ class ChessEnvironment(gym.Env):
     Class to represent chess gym environment, used for training. 
     """
 
-    def __init__(self, opponent, temperature = 0.0):
+    def __init__(self, opponent, temperature = 0.0, temperature_decay_steps = 40000):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
         self.board = chess.Board.from_chess960_pos(pos_seed())
         
@@ -47,6 +47,8 @@ class ChessEnvironment(gym.Env):
         # Chance opponent moves randomly for exploration.
         self.initial_temperature = temperature
         self.temperature = temperature
+        # Per-env steps over which temperature decays to 0.05. 
+        self.temperature_decay_steps = temperature_decay_steps
         
         # Random agent instance
         self.random_agent = RandomAgent()
@@ -107,9 +109,9 @@ class ChessEnvironment(gym.Env):
             else:
                 opponent_action = self.opponent.take_turn(self.board)
             
-            # Linear decay from initial_temperature to 0.05 over 40k steps
+            # Linear decay from initial_temperature to 0.05 over temperature_decay_steps
             if self.initial_temperature > 0:
-                self.temperature = max(0.05, self.initial_temperature - (self.step_counter / 40000) * (self.initial_temperature - 0.05))
+                self.temperature = max(0.05, self.initial_temperature - (self.step_counter / self.temperature_decay_steps) * (self.initial_temperature - 0.05))
             # Make opponent move
             opponent_move = self._convert_to_move(opponent_action)
             self.board.push(opponent_move)
@@ -125,6 +127,18 @@ class ChessEnvironment(gym.Env):
     def render(self):
         # Render chess board
         print(self.board)
+
+    def reload_opponent(self, model_path):
+        """
+        Reload the opponent model from disk.
+        """
+        if hasattr(self.opponent, "load"):
+            self.opponent.load(model_path)
+
+    def close(self):
+        # Shut down opponent subprocesses when a worker terminates
+        if hasattr(self.opponent, "close"):
+            self.opponent.close()
 
     def _convert_to_move(self, action):
         """

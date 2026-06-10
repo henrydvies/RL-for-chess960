@@ -10,9 +10,13 @@ import os
 import chess
 from utils.action_masks import mirror_action
 class rlAgent:
-    def __init__(self, environment):
+    def __init__(self, environment, n_steps=4096, device="auto"):
         """
-        Create model
+        Create model.
+        n_steps is per environment: with N parallel envs pass 4096 // N to keep
+        the same total samples per PPO update.
+        device="cpu" is used for opponent copies in vectorised workers, so they
+        don't each allocate a CUDA context on the training GPU.
         """
         policy_kwargs = dict(
             features_extractor_class=PolicyNetwork,
@@ -25,7 +29,8 @@ class rlAgent:
             verbose=0,
             gamma=0.995, # Discount factor, longer chess games are devalued with defaults.
             ent_coef=0.01, # entropy bonus, forces exploration
-            n_steps=4096, # More samples per update - not applied to agent_v1
+            n_steps=n_steps, # Samples per env per update - not applied to agent_v1
+            device=device,
         )
         
     def train(self, total_timesteps, callback=None):
@@ -44,9 +49,10 @@ class rlAgent:
             model_path = "models/rl_agent"
         self.model.save(model_path)
     
-    def load(self, model_path):
+    def load(self, model_path, env=None):
         """
         Load model. Raises loudly if the file is missing.
+        Pass env so buffer built for right number of environemnts
         """
         if not os.path.exists(model_path + ".zip"):
             raise FileNotFoundError(
@@ -54,7 +60,12 @@ class rlAgent:
                 "Check the path, or skip the load explicitly if a fresh model is intended."
             )
         # custom_objects overrides hyperparameters baked into older saves
-        self.model = MaskablePPO.load(model_path, custom_objects={"gamma": 0.995, "ent_coef": 0.01})
+        self.model = MaskablePPO.load(
+            model_path,
+            env=env,
+            device=self.model.device,
+            custom_objects={"gamma": 0.995, "ent_coef": 0.01, "n_steps": self.model.n_steps},
+        )
         
     def take_turn(self, board):
         """
