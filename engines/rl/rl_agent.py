@@ -46,12 +46,15 @@ class rlAgent:
     
     def load(self, model_path):
         """
-        Load model
+        Load model. Raises loudly if the file is missing.
         """
-        if os.path.exists(model_path + ".zip"):
-            self.model = self.model.load(model_path)
-            self.model.gamme = 0.995
-            self.model.ent_coef = 0.01
+        if not os.path.exists(model_path + ".zip"):
+            raise FileNotFoundError(
+                f"No model found at '{model_path}.zip' - refusing to continue with randomly initialised weights. "
+                "Check the path, or skip the load explicitly if a fresh model is intended."
+            )
+        # custom_objects overrides hyperparameters baked into older saves
+        self.model = MaskablePPO.load(model_path, custom_objects={"gamma": 0.995, "ent_coef": 0.01})
         
     def take_turn(self, board):
         """
