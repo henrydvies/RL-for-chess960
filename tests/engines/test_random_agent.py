@@ -14,70 +14,43 @@ def agent():
     return RandomAgent()
 
 
-## Testing action is a valid integer
+## Testing a move object is returned
 
-def test_action_is_integer(agent):
+def test_returns_move(agent):
     """
-    Action returned should be a plain integer
-    """
-    board = chess.Board()
-    action = agent.take_turn(board)
-    assert isinstance(action, int)
-
-
-def test_action_within_range_start(agent):
-    """
-    Action should be within valid range 0-4095 from starting position
+    take_turn should return a chess.Move
     """
     board = chess.Board()
-    action = agent.take_turn(board)
-    assert 0 <= action <= 4095
+    move = agent.take_turn(board)
+    assert isinstance(move, chess.Move)
 
 
-def test_action_within_range_midgame(agent):
+## Testing the move is legal
+
+def test_move_is_legal_start(agent):
     """
-    Action should be within valid range 0-4095 from a midgame position
-    """
-    board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4")
-    action = agent.take_turn(board)
-    assert 0 <= action <= 4095
-
-
-## Testing action corresponds to a legal move
-
-def test_action_is_legal_start(agent):
-    """
-    Action should decode to a legal move from the starting position
+    Move should be legal from the starting position
     """
     board = chess.Board()
-    action = agent.take_turn(board)
-    from_square = action // 64
-    to_square = action % 64
-    move = chess.Move(from_square, to_square)
+    move = agent.take_turn(board)
     assert move in board.legal_moves
 
 
-def test_action_is_legal_midgame(agent):
+def test_move_is_legal_midgame(agent):
     """
-    Action should decode to a legal move from a midgame position
+    Move should be legal from a midgame position
     """
     board = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4")
-    action = agent.take_turn(board)
-    from_square = action // 64
-    to_square = action % 64
-    move = chess.Move(from_square, to_square)
+    move = agent.take_turn(board)
     assert move in board.legal_moves
 
 
-def test_action_is_legal_endgame(agent):
+def test_move_is_legal_endgame(agent):
     """
-    Action should decode to a legal move from an endgame position
+    Move should be legal from an endgame position
     """
     board = chess.Board("8/8/4k3/8/8/4K3/4P3/8 w - - 0 1")
-    action = agent.take_turn(board)
-    from_square = action // 64
-    to_square = action % 64
-    move = chess.Move(from_square, to_square)
+    move = agent.take_turn(board)
     assert move in board.legal_moves
 
 
@@ -89,11 +62,7 @@ def test_never_illegal_many_calls(agent):
     """
     board = chess.Board()
     for _ in range(200):
-        action = agent.take_turn(board)
-        from_square = action // 64
-        to_square = action % 64
-        move = chess.Move(from_square, to_square)
-        assert move in board.legal_moves
+        assert agent.take_turn(board) in board.legal_moves
 
 
 def test_never_illegal_chess960(agent):
@@ -102,8 +71,4 @@ def test_never_illegal_chess960(agent):
     """
     board = chess.Board.from_chess960_pos(42)
     for _ in range(200):
-        action = agent.take_turn(board)
-        from_square = action // 64
-        to_square = action % 64
-        move = chess.Move(from_square, to_square)
-        assert move in board.legal_moves
+        assert agent.take_turn(board) in board.legal_moves

@@ -262,7 +262,7 @@ if __name__=="__main__":
     while True:
         # Dynamic training designed to be ran and left, only plays opponent if it will learn from it, so no stockfish when it just looses every game etc
         eval_agent = rlAgent(ChessEnvironment(RandomAgent()))
-        model_file = "models/rl_agent_v3/rl_agent_v3"
+        model_file = "models/rl_agent_v4/rl_agent_v4"
         if os.path.exists(f"{model_file}.zip"):
             eval_agent.load(model_file)
         else:
@@ -284,7 +284,7 @@ if __name__=="__main__":
         self_play_timesteps = 250000 - (50000 * opponents_added)
         
         main_config = [
-            (rlAgent, self_play_timesteps, "models/rl_agent_v3"),
+            (rlAgent, self_play_timesteps, "models/rl_agent_v4"),
         ]
         
         if random_score <= 0.5:
@@ -296,4 +296,4 @@ if __name__=="__main__":
         if stockfish_score > -0.8:
             main_config.append((StockfishAgent, 100000, None))
         
-        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v3")
+        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v4")

@@ -19,12 +19,7 @@ class StockfishAgent:
         """
         playResult = self.stockfish.play(board, chess.engine.Limit(depth=self.level))
         
-        move = playResult.move
-        
-        # Convert move to single int
-        action = (move.from_square * 64) + move.to_square
-        
-        return action
+        return playResult.move
     
     def close(self):
         """

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from game.environment import ChessEnvironment
 from engines.random.random_agent import RandomAgent
+from utils.action_masks import move_to_action
 
 
 def get_env():
@@ -96,7 +97,7 @@ def test_legal_move_returns_zero_reward():
     """
     env = get_env()
     move = list(env.board.legal_moves)[0]
-    action = move.from_square * 64 + move.to_square
+    action = move_to_action(move)
     _, reward, _, _, _ = env.step(action)
     assert reward == 0
 
@@ -107,7 +108,7 @@ def test_legal_move_does_not_terminate():
     """
     env = get_env()
     move = list(env.board.legal_moves)[0]
-    action = move.from_square * 64 + move.to_square
+    action = move_to_action(move)
     _, _, terminated, _, _ = env.step(action)
     assert terminated == False
 
@@ -118,7 +119,7 @@ def test_legal_move_returns_correct_shape():
     """
     env = get_env()
     move = list(env.board.legal_moves)[0]
-    action = move.from_square * 64 + move.to_square
+    action = move_to_action(move)
     obs, _, _, _, _ = env.step(action)
     assert obs.shape == (8, 8, 20)
 
@@ -130,8 +131,7 @@ def test_checkmate_returns_positive_reward():
     Delivering checkmate as white should return reward of +1
     """
     env = checkmate_env()
-    move = chess.Move(chess.H5, chess.F7)
-    action = move.from_square * 64 + move.to_square
+    action = move_to_action(chess.Move(chess.H5, chess.F7))
     _, reward, _, _, _ = env.step(action)
     assert reward >= 1
 
@@ -141,8 +141,7 @@ def test_checkmate_terminates_game():
     Checkmate should terminate the episode
     """
     env = checkmate_env()
-    move = chess.Move(chess.H5, chess.F7)
-    action = move.from_square * 64 + move.to_square
+    action = move_to_action(chess.Move(chess.H5, chess.F7))
     _, _, terminated, _, _ = env.step(action)
     assert terminated == True
 
@@ -152,7 +151,6 @@ def test_checkmate_sets_game_over():
     Checkmate should set game_over to True
     """
     env = checkmate_env()
-    move = chess.Move(chess.H5, chess.F7)
-    action = move.from_square * 64 + move.to_square
+    action = move_to_action(chess.Move(chess.H5, chess.F7))
     env.step(action)
     assert env.game_over == True

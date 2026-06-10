@@ -21,12 +21,7 @@ class MinimaxAgent:
         is_maximising = True if board.turn == chess.WHITE else False
 
         # Get best move from _minimax
-        move = self._minimax(board, self.depth, is_maximising, -np_inf, np_inf)[0]
-        
-        # Convert move to single int
-        action = (move.from_square * 64) + move.to_square
-        
-        return action
+        return self._minimax(board, self.depth, is_maximising, -np_inf, np_inf)[0]
         
     def _minimax(self, board, depth, is_maximising, alpha, beta):
         """

@@ -7,7 +7,7 @@ from random import randint
 import numpy as np
 from .board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
-from utils.action_masks import mirror_action, mirror_square
+from utils.action_masks import action_to_move, ACTION_SPACE_SIZE
 import random
 from engines.random.random_agent import RandomAgent
 
@@ -28,8 +28,8 @@ class ChessEnvironment(gym.Env):
         # Attribute to track game status
         self.game_over = False
         
-        # All possible moves: 64 squares map to 64 squares: Hence 64*64 = 4096
-        self.action_space = gym.spaces.Discrete(4096)
+        # AlphaZero-style encoding: 64 from-squares x 73 movement planes = 4672
+        self.action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
         
         # Set of valid data
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(8, 8, 20), dtype=np.int8)
@@ -77,7 +77,7 @@ class ChessEnvironment(gym.Env):
         # Handle Black side
         if self.player_colour == chess.BLACK:
             # Push opponent move
-            self.board.push(self._convert_to_move(self.opponent.take_turn(self.board)))
+            self.board.push(self.opponent.take_turn(self.board))
         
         return board_to_tensor(self.board, self.player_colour), {}
     
@@ -85,11 +85,7 @@ class ChessEnvironment(gym.Env):
         """
         Takes the next step, then takes opponents move.
         """
-        if self.board.turn == chess.BLACK:
-            action = mirror_action(int(action))
-    
-
-        move = self._convert_to_move(action)
+        move = action_to_move(int(action), self.board)
         self.step_counter += 1
         # Handle illegal move
         if move not in self.board.legal_moves:
@@ -105,15 +101,14 @@ class ChessEnvironment(gym.Env):
         if not(self.game_over):     
             # Take opponent move, with chance for random move (temperature > 0 in self-play only)
             if self.temperature > 0 and random.random() < self.temperature:
-                opponent_action = self.random_agent.take_turn(self.board)
+                opponent_move = self.random_agent.take_turn(self.board)
             else:
-                opponent_action = self.opponent.take_turn(self.board)
+                opponent_move = self.opponent.take_turn(self.board)
             
             # Linear decay from initial_temperature to 0.05 over temperature_decay_steps
             if self.initial_temperature > 0:
                 self.temperature = max(0.05, self.initial_temperature - (self.step_counter / self.temperature_decay_steps) * (self.initial_temperature - 0.05))
             # Make opponent move
-            opponent_move = self._convert_to_move(opponent_action)
             self.board.push(opponent_move)
             
             # Check if that results in game over
@@ -140,21 +135,6 @@ class ChessEnvironment(gym.Env):
         if hasattr(self.opponent, "close"):
             self.opponent.close()
 
-    def _convert_to_move(self, action):
-        """
-        Converts action to a chess move object. Also handle promotions.
-        """
-        from_square = action // 64
-        to_square = action % 64
-        
-        # Make the move object
-        move = chess.Move(from_square, to_square)
-        
-        # Check for promotions, only queen promote for now
-        piece = self.board.piece_at(from_square)
-        if piece and piece.piece_type == chess.PAWN and chess.square_rank(to_square) == {chess.WHITE: 7, chess.BLACK: 0}[self.board.turn]:
-            move = chess.Move(from_square, to_square, promotion=chess.QUEEN)
-        return move
     def _handle_outcome(self, outcome):
         """
         Helper to calculate reward based of outcome, and handle game over
