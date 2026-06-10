@@ -15,9 +15,8 @@ from utils.action_masks import N_PLANES
 class ResBlock(nn.Module):
     """
     A single residual block: two 3x3 convs with batch normalisation and a skip
-    connection (AlphaZero-style Conv->BN->ReLU). BN keeps activations stable
-    through depth, which steadies training and removes the practical ceiling on
-    how many blocks can be stacked.
+    connection (AlphaZero-style Conv -> BN -> ReLU). BN keeps activations
+    well-scaled through depth, stabilising training.
     """
     def __init__(self, channels):
         super().__init__()
