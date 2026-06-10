@@ -5,7 +5,7 @@ import torch as th
 import numpy as np
 import pytest
 from gymnasium import spaces
-from engines.rl.policy_network import PolicyNetwork, SpatialPolicyHead
+from engines.rl.policy_network import PolicyNetwork, SpatialPolicyHead, SpatialValueHead
 from utils.action_masks import ACTION_SPACE_SIZE
 
 
@@ -111,3 +111,15 @@ def test_policy_head_logit_ordering():
         rank, file = square // 8, square % 8
         expected = conv_out[0, plane, rank, file]
         assert th.isclose(logits[0, square * 73 + plane], expected)
+
+
+## Testing the spatial value head
+
+def test_value_head_output_shape(network):
+    """
+    SpatialValueHead should map trunk features to a single value per board
+    """
+    head = SpatialValueHead(channels=network.channels)
+    obs = th.randint(0, 2, (4, 8, 8, 20)).float()
+    values = head(network(obs))
+    assert values.shape == (4, 1)

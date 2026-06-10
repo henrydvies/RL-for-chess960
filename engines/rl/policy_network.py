@@ -93,14 +93,38 @@ class SpatialPolicyHead(nn.Module):
         return x.reshape(x.shape[0], -1)
 
 
+class SpatialValueHead(nn.Module):
+    """
+    Value head replacing SB3 default single linear.
+    
+    1x1 conv compresses each squares 64 channels to 8, then a hidden dense layer combines information across the whole board non-linearly.
+    """
+    def __init__(self, channels=64, compress_channels=8, hidden_dim=256):
+        super().__init__()
+        self.channels = channels
+        self.conv = nn.Conv2d(channels, compress_channels, kernel_size=1)
+        self.hidden = nn.Linear(compress_channels * 8 * 8, hidden_dim)
+        self.out = nn.Linear(hidden_dim, 1)
+
+    def forward(self, latent_vf):
+        x = latent_vf.view(-1, self.channels, 8, 8)
+        x = F.relu(self.conv(x))
+        x = F.relu(self.hidden(x.reshape(x.shape[0], -1)))
+        return self.out(x)
+
+
 class ChessPolicy(MaskableActorCriticPolicy):
     """
-    MaskablePPO policy with a spatial policy head replacing the
-    default dense action layer.
+    MaskablePPO policy with spatial policy and value heads replacing the
+    default dense layers.
     """
     def _build(self, lr_schedule):
         super()._build(lr_schedule)
         self.action_net = SpatialPolicyHead(channels=self.features_extractor.channels)
+        self.value_net = SpatialValueHead(channels=self.features_extractor.channels)
         if self.ortho_init:
             self.action_net.apply(partial(self.init_weights, gain=0.01))
+            self.value_net.conv.apply(partial(self.init_weights, gain=2 ** 0.5))
+            self.value_net.hidden.apply(partial(self.init_weights, gain=2 ** 0.5))
+            self.value_net.out.apply(partial(self.init_weights, gain=1))
         self.optimizer = self.optimizer_class(self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs)
