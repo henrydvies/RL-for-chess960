@@ -21,7 +21,7 @@ class ChessEnvironment(gym.Env):
     Class to represent chess gym environment, used for training. 
     """
 
-    def __init__(self, opponent, temperature = 0.1):
+    def __init__(self, opponent, temperature = 0.0):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
         self.board = chess.Board.from_chess960_pos(pos_seed())
         
@@ -44,7 +44,8 @@ class ChessEnvironment(gym.Env):
         # Set opponent agent
         self.opponent = opponent
         
-        # Set chance opponent moves randomly for exploration of moves
+        # Chance opponent moves randomly for exploration.
+        self.initial_temperature = temperature
         self.temperature = temperature
         
         # Random agent instance
@@ -76,7 +77,7 @@ class ChessEnvironment(gym.Env):
             # Push opponent move
             self.board.push(self._convert_to_move(self.opponent.take_turn(self.board)))
         
-        return board_to_tensor(self.board), {}
+        return board_to_tensor(self.board, self.player_colour), {}
     
     def step(self, action):
         """
@@ -90,35 +91,35 @@ class ChessEnvironment(gym.Env):
         self.step_counter += 1
         # Handle illegal move
         if move not in self.board.legal_moves:
-            return (board_to_tensor(self.board), -1, True, False, {})
+            return (board_to_tensor(self.board, self.player_colour), -1, True, False, {})
         
         # Make the move
         self.board.push(move)
         
-        # Calculate reward and if game is over
-        outcome = self.board.outcome()
+        # Calculate reward and if game is over (claim_draw so threefold/fifty-move end the game)
+        outcome = self.board.outcome(claim_draw=True)
         reward = self._handle_outcome(outcome)
 
         if not(self.game_over):     
-            # Take opponent move, with chance for random move, defaulted to 10%
-            # This also applies vs random/ minimax/ stockfish, intend to add only vs self play.
-            if random.random() < self.temperature:
+            # Take opponent move, with chance for random move (temperature > 0 in self-play only)
+            if self.temperature > 0 and random.random() < self.temperature:
                 opponent_action = self.random_agent.take_turn(self.board)
             else:
                 opponent_action = self.opponent.take_turn(self.board)
             
-            # Decay temperature
-            self.temperature = max(0.05, 0.2 - (self.step_counter / 40000) * 0.15) # Linear decay, goes from 0.1 -> 0.05 in 100k steps.
+            # Linear decay from initial_temperature to 0.05 over 40k steps
+            if self.initial_temperature > 0:
+                self.temperature = max(0.05, self.initial_temperature - (self.step_counter / 40000) * (self.initial_temperature - 0.05))
             # Make opponent move
             opponent_move = self._convert_to_move(opponent_action)
             self.board.push(opponent_move)
             
             # Check if that results in game over
-            outcome = self.board.outcome()
+            outcome = self.board.outcome(claim_draw=True)
             reward = self._handle_outcome(outcome)            
         
         # Calculate reward
-        return(board_to_tensor(self.board), reward, self.game_over, False, {})
+        return(board_to_tensor(self.board, self.player_colour), reward, self.game_over, False, {})
         
     
     def render(self):
