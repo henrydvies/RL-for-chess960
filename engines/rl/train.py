@@ -28,7 +28,7 @@ class PeriodicEvaluationCallback(BaseCallback):
     games vs all opponents. Replaces the old tear-down-and-reload-every-50k loop,
     so optimizer state, env (and its temperature decay) persist across the whole run.
     """
-    def __init__(self, agent, opponent, environment, model_folder, agent_model_path, eval_every=EVAL_EVERY_TIMESTEPS):
+    def __init__(self, agent, opponent, environment, model_folder, agent_model_path, eval_every=EVAL_EVERY_TIMESTEPS, opponent_reload_path=None):
         super().__init__()
         self.agent = agent
         self.opponent = opponent
@@ -36,6 +36,7 @@ class PeriodicEvaluationCallback(BaseCallback):
         self.model_folder = model_folder
         self.agent_model_path = agent_model_path
         self.eval_every = eval_every
+        self.opponent_reload_path = opponent_reload_path
         self.last_eval_timesteps = 0
         self.last_colour_counts = {"white": 0, "black": 0}
 
@@ -45,6 +46,9 @@ class PeriodicEvaluationCallback(BaseCallback):
         """
         if self.num_timesteps - self.last_eval_timesteps >= self.eval_every:
             self.checkpoint(self.num_timesteps)
+            # Refresh the self-play opponent
+            if self.opponent_reload_path:
+                self.opponent.load(self.opponent_reload_path)
             _evaluate_all_opponents(self.agent, self.model_folder)
         return True
 
@@ -83,14 +87,15 @@ def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent
     environment = ChessEnvironment(opponent, temperature=SELF_PLAY_TEMPERATURE if self_play else 0.0)
     agent.model.set_env(environment)
 
+    resolved_opponent_path = None
     if opponent_agent_model_path:
         if os.path.exists(f"{opponent_agent_model_path}.zip"):
-            opponent.load(opponent_agent_model_path)
+            resolved_opponent_path = opponent_agent_model_path
         else:
-            derived_opponent_path = f"{opponent_agent_model_path}/{opponent_agent_model_path.split('/')[-1]}"
-            opponent.load(derived_opponent_path)
+            resolved_opponent_path = f"{opponent_agent_model_path}/{opponent_agent_model_path.split('/')[-1]}"
+        opponent.load(resolved_opponent_path)
 
-    eval_callback = PeriodicEvaluationCallback(agent, opponent, environment, agent_model_folder, agent_model_path)
+    eval_callback = PeriodicEvaluationCallback(agent, opponent, environment, agent_model_folder, agent_model_path, opponent_reload_path=resolved_opponent_path)
     callbacks = [eval_callback]
     if use_wandb:
         wandb.init(project="rl-chess960", sync_tensorboard=True)
