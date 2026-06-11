@@ -14,12 +14,7 @@ class RandomAgent:
         legal_moves = list(board.legal_moves)
         
         # Pick a random move
-        move = random_choice(legal_moves)
-        
-        # Convert move to single int
-        action = (move.from_square * 64) + move.to_square
-        
-        return action
+        return random_choice(legal_moves)
         
         
         

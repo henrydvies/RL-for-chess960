@@ -109,8 +109,8 @@ def plot_training(model_folder):
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
 
-        if len(y) >= 5:
-            window = min(5, len(y))
+        if len(y) >= 10:
+            window = min(10, len(y))
 
             rolling = [
                 sum(y[max(0, i - window):i]) / min(i, window)
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="models/rl_agent_v3",
+        default="models/rl_agent_v4",
         help="Path to model folder"
     )
 

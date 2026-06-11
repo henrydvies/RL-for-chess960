@@ -6,8 +6,9 @@ import gymnasium as gym
 from random import randint
 import numpy as np
 from .board_representation import board_to_tensor
+from .endgame_positions import generate_endgame
 from utils.action_masks import action_masks as action_masks_helper
-from utils.action_masks import mirror_action, mirror_square
+from utils.action_masks import action_to_move, ACTION_SPACE_SIZE
 import random
 from engines.random.random_agent import RandomAgent
 
@@ -21,15 +22,23 @@ class ChessEnvironment(gym.Env):
     Class to represent chess gym environment, used for training. 
     """
 
-    def __init__(self, opponent, temperature = 0.1):
+    def __init__(
+        self,
+        opponent,
+        temperature=0.0,
+        temperature_decay_steps=40000,
+        endgame_probability=0.0,
+        endgame_probability_final=0.0,
+        endgame_decay_episodes=0,
+    ):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
         self.board = chess.Board.from_chess960_pos(pos_seed())
         
         # Attribute to track game status
         self.game_over = False
         
-        # All possible moves: 64 squares map to 64 squares: Hence 64*64 = 4096
-        self.action_space = gym.spaces.Discrete(4096)
+        # AlphaZero-style encoding: 64 from-squares x 73 movement planes = 4672
+        self.action_space = gym.spaces.Discrete(ACTION_SPACE_SIZE)
         
         # Set of valid data
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(8, 8, 20), dtype=np.int8)
@@ -40,12 +49,21 @@ class ChessEnvironment(gym.Env):
         # Colour tracking
         self.white_episodes = 0
         self.black_episodes = 0
+        self.endgame_episodes = 0
         
         # Set opponent agent
         self.opponent = opponent
         
-        # Set chance opponent moves randomly for exploration of moves
+        # Chance opponent moves randomly for exploration.
+        self.initial_temperature = temperature
         self.temperature = temperature
+        # Per-env steps over which temperature decays to 0.05. 
+        self.temperature_decay_steps = temperature_decay_steps
+
+        # Endgame curriculum: start high while the agent draw-farms, decay as mating improves
+        self.endgame_probability = endgame_probability
+        self.endgame_probability_final = endgame_probability_final
+        self.endgame_decay_episodes = endgame_decay_episodes
         
         # Random agent instance
         self.random_agent = RandomAgent()
@@ -59,12 +77,28 @@ class ChessEnvironment(gym.Env):
         """
         mask = action_masks_helper(self.board)
         return mask
+
+    def _current_endgame_probability(self):
+        if self.endgame_probability <= 0:
+            return 0.0
+        if self.endgame_decay_episodes <= 0 or self.endgame_probability_final <= 0:
+            return self.endgame_probability
+        episodes = self.white_episodes + self.black_episodes
+        progress = min(1.0, episodes / self.endgame_decay_episodes)
+        return self.endgame_probability + progress * (
+            self.endgame_probability_final - self.endgame_probability
+        )
     
     def reset(self, seed=None, options=None):
-        # Reset the chess board.
-        self.board = chess.Board.from_chess960_pos(pos_seed())
         self.game_over = False
+        self.step_counter = 0
         self.player_colour = random.choice([chess.WHITE, chess.BLACK])
+
+        if random.random() < self._current_endgame_probability():
+            self.board = generate_endgame(self.player_colour)
+            self.endgame_episodes += 1
+        else:
+            self.board = chess.Board.from_chess960_pos(pos_seed())
         
         if self.player_colour == chess.WHITE:
             self.white_episodes += 1
@@ -74,72 +108,64 @@ class ChessEnvironment(gym.Env):
         # Handle Black side
         if self.player_colour == chess.BLACK:
             # Push opponent move
-            self.board.push(self._convert_to_move(self.opponent.take_turn(self.board)))
+            self.board.push(self.opponent.take_turn(self.board))
         
-        return board_to_tensor(self.board), {}
+        return board_to_tensor(self.board, self.player_colour), {}
     
     def step(self, action):
         """
         Takes the next step, then takes opponents move.
         """
-        if self.board.turn == chess.BLACK:
-            action = mirror_action(int(action))
-    
-
-        move = self._convert_to_move(action)
+        move = action_to_move(int(action), self.board)
         self.step_counter += 1
         # Handle illegal move
         if move not in self.board.legal_moves:
-            return (board_to_tensor(self.board), -1, True, False, {})
+            return (board_to_tensor(self.board, self.player_colour), -1, True, False, {})
         
         # Make the move
         self.board.push(move)
         
-        # Calculate reward and if game is over
-        outcome = self.board.outcome()
+        # Calculate reward and if game is over (claim_draw so threefold/fifty-move end the game)
+        outcome = self.board.outcome(claim_draw=True)
         reward = self._handle_outcome(outcome)
 
         if not(self.game_over):     
-            # Take opponent move, with chance for random move, defaulted to 10%
-            # This also applies vs random/ minimax/ stockfish, intend to add only vs self play.
-            if random.random() < self.temperature:
-                opponent_action = self.random_agent.take_turn(self.board)
+            # Take opponent move, with chance for random move (temperature > 0 in self-play only)
+            if self.temperature > 0 and random.random() < self.temperature:
+                opponent_move = self.random_agent.take_turn(self.board)
             else:
-                opponent_action = self.opponent.take_turn(self.board)
+                opponent_move = self.opponent.take_turn(self.board)
             
-            # Decay temperature
-            self.temperature = max(0.05, 0.2 - (self.step_counter / 40000) * 0.15) # Linear decay, goes from 0.1 -> 0.05 in 100k steps.
+            # Linear decay from initial_temperature to 0.05 over temperature_decay_steps
+            if self.initial_temperature > 0:
+                self.temperature = max(0.05, self.initial_temperature - (self.step_counter / self.temperature_decay_steps) * (self.initial_temperature - 0.05))
             # Make opponent move
-            opponent_move = self._convert_to_move(opponent_action)
             self.board.push(opponent_move)
             
             # Check if that results in game over
-            outcome = self.board.outcome()
+            outcome = self.board.outcome(claim_draw=True)
             reward = self._handle_outcome(outcome)            
         
         # Calculate reward
-        return(board_to_tensor(self.board), reward, self.game_over, False, {})
+        return(board_to_tensor(self.board, self.player_colour), reward, self.game_over, False, {})
         
     
     def render(self):
         # Render chess board
         print(self.board)
 
-    def _convert_to_move(self, action):
+    def reload_opponent(self, model_path):
         """
-        Converts action to a chess move object. Also handle promotions.
+        Reload the opponent model from disk.
         """
-        from_square = action // 64
-        to_square = action % 64
-        
-        # Make the move object
-        move = chess.Move(from_square, to_square)
-        
-        # Check for promotions, only queen promote for now
-        piece = self.board.piece_at(from_square)
-        if piece and piece.piece_type == chess.PAWN and chess.square_rank(to_square) == {chess.WHITE: 7, chess.BLACK: 0}[self.board.turn]:
-            move = chess.Move(from_square, to_square, promotion=chess.QUEEN)
-        return move
+        if hasattr(self.opponent, "load"):
+            self.opponent.load(model_path)
+
+    def close(self):
+        # Shut down opponent subprocesses when a worker terminates
+        if hasattr(self.opponent, "close"):
+            self.opponent.close()
+
     def _handle_outcome(self, outcome):
         """
         Helper to calculate reward based of outcome, and handle game over
