@@ -104,7 +104,14 @@ def plot_training(model_folder):
             linewidth=0.5,
             alpha=0.35
         )
-
+        
+        ax.axvline(
+            x=3000000,
+            color="gray",
+            linestyle="--",
+            linewidth=0.8,
+            label="MCTS introduced",
+        )
         # Cleaner publication-style axes
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)

@@ -18,16 +18,48 @@ import shutil
 import os
 import random
 
-EVAL_EVERY_TIMESTEPS = 50000
+EVAL_EVERY_TIMESTEPS = 100000
+EVAL_N_GAMES = 10
+INCLUDE_SELF_PLAY_EVAL = False
 SELF_PLAY_TEMPERATURE = 0.2
 TEMPERATURE_DECAY_STEPS = 40000
 N_ENVS = 8
 ENDGAME_CURRICULUM_PROB = 0.4
 ENDGAME_CURRICULUM_PROB_FINAL = 0.15
 ENDGAME_CURRICULUM_DECAY_EPISODES = 4000
+MCTS_SIMS_TRAIN = 25
+MCTS_C_PUCT = 1.25
+BENCHMARK_OPPONENT_CLASSES = (RandomAgent, MinimaxAgent, StockfishAgent)
 
 
-def _make_env_fn(opponent_factory, temperature):
+class MCTSOpponentWrapper:
+    """
+    Self-play opponent that searches with MCTS in take_turn.
+    """
+
+    def __init__(self, agent, n_sims, c_puct=MCTS_C_PUCT, root_deterministic=False):
+        self._agent = agent
+        self.n_sims = n_sims
+        self.c_puct = c_puct
+        self.root_deterministic = root_deterministic
+
+    def take_turn(self, board):
+        return self._agent.take_turn(
+            board,
+            n_sims=self.n_sims,
+            c_puct=self.c_puct,
+            root_deterministic=self.root_deterministic,
+        )
+
+    def load(self, model_path):
+        self._agent.load(model_path)
+
+    def close(self):
+        if hasattr(self._agent, "close"):
+            self._agent.close()
+
+
+def _make_env_fn(opponent_factory, temperature, use_mcts=False):
     """
     Returns a function that builds a fresh env with its own opponent instance.
     """
@@ -39,19 +71,175 @@ def _make_env_fn(opponent_factory, temperature):
             endgame_probability=ENDGAME_CURRICULUM_PROB,
             endgame_probability_final=ENDGAME_CURRICULUM_PROB_FINAL,
             endgame_decay_episodes=ENDGAME_CURRICULUM_DECAY_EPISODES,
+            use_mcts=use_mcts,
         )
     return _init
 
 
-def _self_play_opponent_factory(opponent_model_path):
+def _self_play_opponent_factory(opponent_model_path, mcts_sims=MCTS_SIMS_TRAIN):
     """
     Builds the self-play opponent inside a worker process. On cpu to stop it using up gpu.
     """
     def _factory():
         opponent = rlAgent(ChessEnvironment(RandomAgent()), device="cpu")
         opponent.load(opponent_model_path)
-        return opponent
+        if mcts_sims <= 0:
+            return opponent
+        return MCTSOpponentWrapper(
+            opponent,
+            n_sims=mcts_sims,
+            c_puct=MCTS_C_PUCT,
+            root_deterministic=False,
+        )
     return _factory
+
+
+def _update_elo_from_game(elo_tracker, agent, opponent, result, agent_played_white):
+    """
+    Update Elo from a single game result (True=white wins, False=black wins, None=draw).
+    """
+    agent_name = agent.__class__.__name__
+    opponent_name = opponent.__class__.__name__
+
+    if agent_name not in elo_tracker.elo_map:
+        elo_tracker.elo_map[agent_name] = 600
+    if opponent_name not in elo_tracker.elo_map:
+        elo_tracker.elo_map[opponent_name] = 600
+
+    if result is None:
+        agent_outcome = None
+    elif agent_played_white:
+        agent_outcome = result
+    else:
+        agent_outcome = not result
+
+    elo_tracker.update(agent_name, opponent_name, agent_outcome)
+
+
+def get_ep_rew_mean(
+    agent,
+    opponent,
+    n_games=10,
+    n_sims=MCTS_SIMS_TRAIN,
+    root_deterministic=True,
+    elo_tracker=None,
+):
+    """
+    Play n_games between agent and opponent.
+    Returns (wins - losses) / n_games. Win=+1, Draw=0, Loss=-1.
+    Cleaner than SB3 episode buffer which mixes opponents and includes draw penalty.
+    """
+    wins, draws, losses = 0, 0, 0
+    opponent_n_sims = n_sims if isinstance(opponent, rlAgent) else 0
+    for i in range(n_games):
+        if i % 2 == 0:
+            result = play_single_game(
+                agent,
+                opponent,
+                white_n_sims=n_sims,
+                black_n_sims=opponent_n_sims,
+                root_deterministic=root_deterministic,
+            )
+            agent_won = result is True
+            agent_lost = result is False
+            if elo_tracker is not None:
+                _update_elo_from_game(elo_tracker, agent, opponent, result, agent_played_white=True)
+        else:
+            result = play_single_game(
+                opponent,
+                agent,
+                white_n_sims=opponent_n_sims,
+                black_n_sims=n_sims,
+                root_deterministic=root_deterministic,
+            )
+            agent_won = result is False
+            agent_lost = result is True
+            if elo_tracker is not None:
+                _update_elo_from_game(elo_tracker, agent, opponent, result, agent_played_white=False)
+
+        if agent_won:
+            wins += 1
+        elif agent_lost:
+            losses += 1
+        else:
+            draws += 1
+
+    return (wins - losses) / n_games
+
+
+def run_benchmark_suite(
+    agent,
+    model_folder,
+    *,
+    n_games=EVAL_N_GAMES,
+    include_self_play=INCLUDE_SELF_PLAY_EVAL,
+    log_timesteps=0,
+    logger=None,
+    elo_tracker=None,
+    n_sims=MCTS_SIMS_TRAIN,
+    root_deterministic=True,
+):
+    """
+    Run one evaluation pass vs standard benchmarks. Returns scores keyed by opponent class.
+    Optionally logs to training_log.json and updates Elo from the same games.
+
+    Self-play eval (agent vs its own checkpoint) is off by default; set
+    include_self_play=True or INCLUDE_SELF_PLAY_EVAL to re-enable.
+    """
+    if logger is None and model_folder is not None:
+        logger = TrainingLogger(f"{model_folder}/training_log.json")
+
+    scores = {}
+    for opponent_cls in BENCHMARK_OPPONENT_CLASSES:
+        opponent = opponent_cls()
+        score = get_ep_rew_mean(
+            agent,
+            opponent,
+            n_games=n_games,
+            n_sims=n_sims,
+            root_deterministic=root_deterministic,
+            elo_tracker=elo_tracker,
+        )
+        scores[opponent_cls] = score
+        if logger is not None:
+            logger.update_log(log_timesteps, opponent, score)
+            logger.save()
+        if hasattr(opponent, "close"):
+            opponent.close()
+
+    if include_self_play and model_folder is not None:
+        agent_model_path = f"{model_folder}/{model_folder.split('/')[-1]}"
+        self_play_opponent = type(agent)(ChessEnvironment(RandomAgent()))
+        self_play_opponent.load(agent_model_path)
+        score = get_ep_rew_mean(
+            agent,
+            self_play_opponent,
+            n_games=n_games,
+            n_sims=n_sims,
+            root_deterministic=root_deterministic,
+            elo_tracker=elo_tracker,
+        )
+        scores[type(agent)] = score
+        if logger is not None:
+            logger.update_log(log_timesteps, self_play_opponent, score)
+            logger.save()
+
+    if elo_tracker is not None:
+        elo_tracker.save()
+
+    return scores
+
+
+def _evaluate_all_opponents(agent, model_folder, n_games=EVAL_N_GAMES):
+    """
+    Evaluate the live agent vs benchmark opponents and log as 0-timestep entries.
+    """
+    run_benchmark_suite(
+        agent,
+        model_folder,
+        n_games=n_games,
+        log_timesteps=0,
+    )
 
 
 class PeriodicEvaluationCallback(BaseCallback):
@@ -61,7 +249,17 @@ class PeriodicEvaluationCallback(BaseCallback):
     games vs all opponents. Replaces the old tear-down-and-reload-every-50k loop,
     so optimizer state, env (and its temperature decay) persist across the whole run.
     """
-    def __init__(self, agent, opponent, environment, model_folder, agent_model_path, eval_every=EVAL_EVERY_TIMESTEPS, opponent_reload_path=None):
+    def __init__(
+        self,
+        agent,
+        opponent,
+        environment,
+        model_folder,
+        agent_model_path,
+        eval_every=EVAL_EVERY_TIMESTEPS,
+        opponent_reload_path=None,
+        elo_tracker=None,
+    ):
         super().__init__()
         self.agent = agent
         self.opponent = opponent
@@ -70,7 +268,9 @@ class PeriodicEvaluationCallback(BaseCallback):
         self.agent_model_path = agent_model_path
         self.eval_every = eval_every
         self.opponent_reload_path = opponent_reload_path
+        self.elo_tracker = elo_tracker
         self.last_eval_timesteps = 0
+        self.last_eval_at_timesteps = None
         self.last_colour_counts = {"white": 0, "black": 0}
 
     def _on_step(self):
@@ -82,7 +282,13 @@ class PeriodicEvaluationCallback(BaseCallback):
             # Refresh the self-play opponents in every worker process
             if self.opponent_reload_path:
                 self.environment.env_method("reload_opponent", self.opponent_reload_path)
-            _evaluate_all_opponents(self.agent, self.model_folder)
+            run_benchmark_suite(
+                self.agent,
+                self.model_folder,
+                n_games=EVAL_N_GAMES,
+                elo_tracker=self.elo_tracker,
+            )
+            self.last_eval_at_timesteps = self.num_timesteps
         return True
 
     def checkpoint(self, current_timesteps):
@@ -110,7 +316,16 @@ class PeriodicEvaluationCallback(BaseCallback):
         logger.save()
 
 
-def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent_agent_model_path=None, total_timesteps=0, use_wandb=False, self_play=False):
+def run_training(
+    agent,
+    opponent,
+    agent_model_folder="models/rl_agent",
+    opponent_agent_model_path=None,
+    total_timesteps=0,
+    use_wandb=False,
+    self_play=False,
+    elo_tracker=None,
+):
     """
     Run one training phase vs a single opponent with a single learn() call over
     N_ENVS parallel environments. Periodic checkpointing/evaluation happens
@@ -128,19 +343,43 @@ def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent
         if not os.path.exists(f"{resolved_opponent_path}.zip"):
             raise FileNotFoundError(f"Opponent model not found at '{resolved_opponent_path}.zip'")
 
-    # Random opponent moves (exploration temperature) only apply during self-play
-    temperature = SELF_PLAY_TEMPERATURE if self_play else 0.0
+    # Learner uses MCTS in every training phase; self-play also searches on both sides
+    use_mcts = MCTS_SIMS_TRAIN > 0
+    if use_mcts:
+        agent.mcts_sims = MCTS_SIMS_TRAIN
+        agent.mcts_c_puct = MCTS_C_PUCT
+        agent.mcts_root_deterministic = False
+        temperature = 0.0
+    else:
+        agent.mcts_sims = 0
+        agent.mcts_root_deterministic = False
+        temperature = SELF_PLAY_TEMPERATURE if self_play else 0.0
+
     if self_play:
-        opponent_factory = _self_play_opponent_factory(resolved_opponent_path)
+        opponent_factory = _self_play_opponent_factory(
+            resolved_opponent_path,
+            mcts_sims=MCTS_SIMS_TRAIN if use_mcts else 0,
+        )
     else:
         opponent_factory = type(opponent)
 
     # One env (and opponent) per worker process
-    vec_env = SubprocVecEnv([_make_env_fn(opponent_factory, temperature) for _ in range(N_ENVS)])
+    vec_env = SubprocVecEnv([
+        _make_env_fn(opponent_factory, temperature, use_mcts=use_mcts)
+        for _ in range(N_ENVS)
+    ])
 
     agent.load(agent_model_path, env=vec_env)
 
-    eval_callback = PeriodicEvaluationCallback(agent, opponent, vec_env, agent_model_folder, agent_model_path, opponent_reload_path=resolved_opponent_path if self_play else None)
+    eval_callback = PeriodicEvaluationCallback(
+        agent,
+        opponent,
+        vec_env,
+        agent_model_folder,
+        agent_model_path,
+        opponent_reload_path=resolved_opponent_path if self_play else None,
+        elo_tracker=elo_tracker,
+    )
     callbacks = [eval_callback]
     if use_wandb:
         wandb.init(project="rl-chess960", sync_tensorboard=True)
@@ -155,29 +394,14 @@ def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent
         if use_wandb:
             wandb.finish()
 
-    _evaluate_all_opponents(agent, agent_model_folder)
-
-def _evaluate_all_opponents(agent, model_folder):
-    """
-    Evaluate the live agent vs all opponents and log as 0-timestep entries.
-    """
-    log_path = f"{model_folder}/training_log.json"
-    logger = TrainingLogger(log_path)
-
-    for eval_opp in [RandomAgent(), MinimaxAgent(), StockfishAgent()]:
-        score = get_ep_rew_mean(agent, eval_opp, n_games=15)
-        logger.update_log(0, eval_opp, score)
-        logger.save()
-        if hasattr(eval_opp, 'close'):
-            eval_opp.close()
-
-    # Self-play evaluation vs the latest checkpoint on disk
-    agent_model_path = f"{model_folder}/{model_folder.split('/')[-1]}"
-    self_play_opp = type(agent)(ChessEnvironment(RandomAgent()))
-    self_play_opp.load(agent_model_path)
-    score = get_ep_rew_mean(agent, self_play_opp, n_games=15)
-    logger.update_log(0, self_play_opp, score)
-    logger.save()
+    final_timesteps = agent.model.num_timesteps
+    if eval_callback.last_eval_at_timesteps != final_timesteps:
+        run_benchmark_suite(
+            agent,
+            agent_model_folder,
+            n_games=EVAL_N_GAMES,
+            elo_tracker=elo_tracker,
+        )
 
 def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (MinimaxAgent, 0, None), (rlAgent, 10000, "models/rl_agent")], model_path="models/rl_agent", use_wandb=True):
     """
@@ -217,14 +441,11 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
             total_timesteps=timesteps,
             use_wandb=use_wandb,
             self_play=self_play,
+            elo_tracker=elo_tracker,
         )
-
-        elo_tracker = evaluate(agent, opponent_instance, n_games=10, tracker=elo_tracker)
 
         if self_play:
             elo_tracker = evaluate(RandomAgent(), MinimaxAgent(), n_games=10, tracker=elo_tracker)
-
-        elo_tracker.save()
 
         if hasattr(opponent_instance, 'close'):
             opponent_instance.close()
@@ -235,30 +456,8 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
         f"{agent_model_path}.zip",
         f"{model_path}/snapshots/snapshot_{snapshot_count + 1}.zip"
     )
-    
-def get_ep_rew_mean(agent, opponent, n_games=10):
-    """
-    Play n_games between agent and opponent.
-    Returns (wins - losses) / n_games. Win=+1, Draw=0, Loss=-1.
-    Cleaner than SB3 episode buffer which mixes opponents and includes draw penalty.
-    """
-    wins, draws, losses = 0, 0, 0
-    for i in range(n_games):
-        if i % 2 == 0:
-            result = play_single_game(agent, opponent)
-            agent_won = result is True
-            agent_lost = result is False
-        else:
-            result = play_single_game(opponent, agent)
-            agent_won = result is False
-            agent_lost = result is True
-        
-        if agent_won: wins += 1
-        elif agent_lost: losses += 1
-        else: draws += 1
-    
-    return (wins - losses) / n_games
-    
+
+
 if __name__=="__main__":
     """
     Dynamic loop that selects training opponents based of performance.
@@ -274,11 +473,15 @@ if __name__=="__main__":
         else:
             print(f"No existing model at {model_file}.zip - evaluating fresh weights.")
         
-        random_score = get_ep_rew_mean(eval_agent, RandomAgent(), n_games=10)
-        minimax_score = get_ep_rew_mean(eval_agent, MinimaxAgent(), n_games=10)
-        stockfish_opponent = StockfishAgent()
-        stockfish_score = get_ep_rew_mean(eval_agent, stockfish_opponent, n_games=10)
-        stockfish_opponent.close()
+        benchmark_scores = run_benchmark_suite(
+            eval_agent,
+            "models/rl_agent_v4",
+            n_games=EVAL_N_GAMES,
+            log_timesteps=0,
+        )
+        random_score = benchmark_scores[RandomAgent]
+        minimax_score = benchmark_scores[MinimaxAgent]
+        stockfish_score = benchmark_scores[StockfishAgent]
         
         # If more opponents then less time on self play for equal loop length
         # This also means that early on when it arguably needs more random/ minimax it does it more frequently due to less self play.
