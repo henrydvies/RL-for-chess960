@@ -25,9 +25,38 @@ N_ENVS = 8
 ENDGAME_CURRICULUM_PROB = 0.4
 ENDGAME_CURRICULUM_PROB_FINAL = 0.15
 ENDGAME_CURRICULUM_DECAY_EPISODES = 4000
+MCTS_SIMS_TRAIN = 25
+MCTS_C_PUCT = 1.25
 
 
-def _make_env_fn(opponent_factory, temperature):
+class MCTSOpponentWrapper:
+    """
+    Self-play opponent that searches with MCTS in take_turn.
+    """
+
+    def __init__(self, agent, n_sims, c_puct=MCTS_C_PUCT, root_deterministic=False):
+        self._agent = agent
+        self.n_sims = n_sims
+        self.c_puct = c_puct
+        self.root_deterministic = root_deterministic
+
+    def take_turn(self, board):
+        return self._agent.take_turn(
+            board,
+            n_sims=self.n_sims,
+            c_puct=self.c_puct,
+            root_deterministic=self.root_deterministic,
+        )
+
+    def load(self, model_path):
+        self._agent.load(model_path)
+
+    def close(self):
+        if hasattr(self._agent, "close"):
+            self._agent.close()
+
+
+def _make_env_fn(opponent_factory, temperature, use_mcts=False):
     """
     Returns a function that builds a fresh env with its own opponent instance.
     """
@@ -39,18 +68,26 @@ def _make_env_fn(opponent_factory, temperature):
             endgame_probability=ENDGAME_CURRICULUM_PROB,
             endgame_probability_final=ENDGAME_CURRICULUM_PROB_FINAL,
             endgame_decay_episodes=ENDGAME_CURRICULUM_DECAY_EPISODES,
+            use_mcts=use_mcts,
         )
     return _init
 
 
-def _self_play_opponent_factory(opponent_model_path):
+def _self_play_opponent_factory(opponent_model_path, mcts_sims=MCTS_SIMS_TRAIN):
     """
     Builds the self-play opponent inside a worker process. On cpu to stop it using up gpu.
     """
     def _factory():
         opponent = rlAgent(ChessEnvironment(RandomAgent()), device="cpu")
         opponent.load(opponent_model_path)
-        return opponent
+        if mcts_sims <= 0:
+            return opponent
+        return MCTSOpponentWrapper(
+            opponent,
+            n_sims=mcts_sims,
+            c_puct=MCTS_C_PUCT,
+            root_deterministic=False,
+        )
     return _factory
 
 
@@ -128,15 +165,31 @@ def run_training(agent, opponent, agent_model_folder="models/rl_agent", opponent
         if not os.path.exists(f"{resolved_opponent_path}.zip"):
             raise FileNotFoundError(f"Opponent model not found at '{resolved_opponent_path}.zip'")
 
-    # Random opponent moves (exploration temperature) only apply during self-play
-    temperature = SELF_PLAY_TEMPERATURE if self_play else 0.0
+    # Self-play with MCTS disables temperature random moves; other phases stay greedy
+    use_mcts = self_play and MCTS_SIMS_TRAIN > 0
+    if use_mcts:
+        agent.mcts_sims = MCTS_SIMS_TRAIN
+        agent.mcts_c_puct = MCTS_C_PUCT
+        agent.mcts_root_deterministic = False
+        temperature = 0.0
+    else:
+        agent.mcts_sims = 0
+        agent.mcts_root_deterministic = False
+        temperature = SELF_PLAY_TEMPERATURE if self_play else 0.0
+
     if self_play:
-        opponent_factory = _self_play_opponent_factory(resolved_opponent_path)
+        opponent_factory = _self_play_opponent_factory(
+            resolved_opponent_path,
+            mcts_sims=MCTS_SIMS_TRAIN if use_mcts else 0,
+        )
     else:
         opponent_factory = type(opponent)
 
     # One env (and opponent) per worker process
-    vec_env = SubprocVecEnv([_make_env_fn(opponent_factory, temperature) for _ in range(N_ENVS)])
+    vec_env = SubprocVecEnv([
+        _make_env_fn(opponent_factory, temperature, use_mcts=use_mcts)
+        for _ in range(N_ENVS)
+    ])
 
     agent.load(agent_model_path, env=vec_env)
 

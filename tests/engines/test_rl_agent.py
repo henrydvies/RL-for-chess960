@@ -9,7 +9,18 @@ from game.environment import ChessEnvironment
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
 from engines.rl.maskable_ppo_mcts import MaskablePPO_MCTS
-from utils.action_masks import action_to_move
+from utils.action_masks import action_to_move, action_masks
+
+
+def _uniform_policy_value(board):
+    """
+    Neutral mock policy/value for MCTS integration tests.
+    """
+    mask = action_masks(board)
+    legal = np.flatnonzero(mask)
+    prior = 1.0 / len(legal)
+    priors = {int(action): prior for action in legal}
+    return priors, 0.0
 
 
 @pytest.fixture
@@ -155,7 +166,8 @@ def test_take_turn_mcts_finds_mate_in_one(agent):
     MCTS should find a forced mate with enough sims
     """
     board = chess.Board("6k1/8/6KQ/8/8/8/8/8 w - - 0 1")
-    move = agent.take_turn(board, n_sims=50, root_deterministic=True)
+    with patch.object(agent, "get_policy_value", side_effect=_uniform_policy_value):
+        move = agent.take_turn(board, n_sims=50, root_deterministic=True)
     board.push(move)
     assert board.is_checkmate()
 

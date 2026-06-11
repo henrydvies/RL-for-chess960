@@ -125,7 +125,7 @@ class ChessEnvironment(gym.Env):
         """
         Takes the next step, then takes opponents move.
         """
-        move = action_to_move(int(action), self.board)
+        move = action_to_move(int(np.asarray(action).item()), self.board)
         self.step_counter += 1
         # Handle illegal move
         if move not in self.board.legal_moves:
