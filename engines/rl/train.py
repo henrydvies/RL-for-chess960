@@ -22,6 +22,9 @@ EVAL_EVERY_TIMESTEPS = 50000
 SELF_PLAY_TEMPERATURE = 0.2
 TEMPERATURE_DECAY_STEPS = 40000
 N_ENVS = 8
+ENDGAME_CURRICULUM_PROB = 0.4
+ENDGAME_CURRICULUM_PROB_FINAL = 0.15
+ENDGAME_CURRICULUM_DECAY_EPISODES = 4000
 
 
 def _make_env_fn(opponent_factory, temperature):
@@ -33,6 +36,9 @@ def _make_env_fn(opponent_factory, temperature):
             opponent_factory(),
             temperature=temperature,
             temperature_decay_steps=max(1, TEMPERATURE_DECAY_STEPS // N_ENVS),
+            endgame_probability=ENDGAME_CURRICULUM_PROB,
+            endgame_probability_final=ENDGAME_CURRICULUM_PROB_FINAL,
+            endgame_decay_episodes=ENDGAME_CURRICULUM_DECAY_EPISODES,
         )
     return _init
 

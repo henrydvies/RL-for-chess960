@@ -60,6 +60,23 @@ def test_reset_generates_new_position():
     assert isinstance(board_after, str)
 
 
+def test_endgame_curriculum_forces_minimal_position():
+    """
+    With probability 1.0, reset should start from a KQ/KR vs K endgame
+    """
+    env = ChessEnvironment(opponent=RandomAgent(), endgame_probability=1.0)
+    env.reset()
+    assert len(env.board.piece_map()) == 3
+    assert env.endgame_episodes == 1
+
+
+def test_endgame_curriculum_resets_step_counter():
+    env = ChessEnvironment(opponent=RandomAgent(), endgame_probability=1.0)
+    env.step_counter = 50
+    env.reset()
+    assert env.step_counter == 0
+
+
 ## Testing illegal moves
 
 def test_illegal_move_returns_negative_reward():

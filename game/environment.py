@@ -6,6 +6,7 @@ import gymnasium as gym
 from random import randint
 import numpy as np
 from .board_representation import board_to_tensor
+from .endgame_positions import generate_endgame
 from utils.action_masks import action_masks as action_masks_helper
 from utils.action_masks import action_to_move, ACTION_SPACE_SIZE
 import random
@@ -21,7 +22,15 @@ class ChessEnvironment(gym.Env):
     Class to represent chess gym environment, used for training. 
     """
 
-    def __init__(self, opponent, temperature = 0.0, temperature_decay_steps = 40000):
+    def __init__(
+        self,
+        opponent,
+        temperature=0.0,
+        temperature_decay_steps=40000,
+        endgame_probability=0.0,
+        endgame_probability_final=0.0,
+        endgame_decay_episodes=0,
+    ):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
         self.board = chess.Board.from_chess960_pos(pos_seed())
         
@@ -40,6 +49,7 @@ class ChessEnvironment(gym.Env):
         # Colour tracking
         self.white_episodes = 0
         self.black_episodes = 0
+        self.endgame_episodes = 0
         
         # Set opponent agent
         self.opponent = opponent
@@ -49,6 +59,11 @@ class ChessEnvironment(gym.Env):
         self.temperature = temperature
         # Per-env steps over which temperature decays to 0.05. 
         self.temperature_decay_steps = temperature_decay_steps
+
+        # Endgame curriculum: start high while the agent draw-farms, decay as mating improves
+        self.endgame_probability = endgame_probability
+        self.endgame_probability_final = endgame_probability_final
+        self.endgame_decay_episodes = endgame_decay_episodes
         
         # Random agent instance
         self.random_agent = RandomAgent()
@@ -62,12 +77,28 @@ class ChessEnvironment(gym.Env):
         """
         mask = action_masks_helper(self.board)
         return mask
+
+    def _current_endgame_probability(self):
+        if self.endgame_probability <= 0:
+            return 0.0
+        if self.endgame_decay_episodes <= 0 or self.endgame_probability_final <= 0:
+            return self.endgame_probability
+        episodes = self.white_episodes + self.black_episodes
+        progress = min(1.0, episodes / self.endgame_decay_episodes)
+        return self.endgame_probability + progress * (
+            self.endgame_probability_final - self.endgame_probability
+        )
     
     def reset(self, seed=None, options=None):
-        # Reset the chess board.
-        self.board = chess.Board.from_chess960_pos(pos_seed())
         self.game_over = False
+        self.step_counter = 0
         self.player_colour = random.choice([chess.WHITE, chess.BLACK])
+
+        if random.random() < self._current_endgame_probability():
+            self.board = generate_endgame(self.player_colour)
+            self.endgame_episodes += 1
+        else:
+            self.board = chess.Board.from_chess960_pos(pos_seed())
         
         if self.player_colour == chess.WHITE:
             self.white_episodes += 1

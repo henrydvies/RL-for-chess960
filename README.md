@@ -130,6 +130,7 @@ v3 showed slow learning improvements and was slow to run, it may have performed 
 - **Loud load failures** — a missing model path now raises `FileNotFoundError` instead of silently continuing with random weights (the failure mode that invalidated v1's self-play).
 - **Temperature restricted to self-play** — random opponent moves no longer pollute the Minimax/Stockfish benchmark signal.
 - **Misc fixes** — Stockfish process leak in the evaluation loop, dead turn-indicator plane, curriculum threshold mismatch, Minimax alpha-beta pruning with correct checkmate scoring at the horizon.
+- **Endgame curriculum** — training episodes start from random KQ/KR vs K positions (~40% early, decaying to ~15% over 4k episodes per worker) so the agent learns checkmate without material reward shaping. Evaluation games remain full Chess960. _This was implimented after roughly 4 million timesteps._
 
 ---
 
@@ -143,7 +144,9 @@ v3 showed slow learning improvements and was slow to run, it may have performed 
 
 _Graphs show mean episode reward over total timesteps trained. Orange line is rolling average. Above 0 = net positive reward._
 
-_Note: ep_rew_mean methodology changed across versions. v1 uses SB3 episode buffer (draw=0). v2 introduced a draw penalty (-0.1) in the reward function, which depresses ep_rew_mean values: the apparent lack of improvement in v2 may partly reflect frequent draws being penalised rather than genuine regression, making v2 harder to evaluate fairly. v3 switches to 15 post-run evaluation games (win=+1, draw=0, loss=-1) from ~3M timesteps. Values are not directly comparable across versions due to this._
+_Note: ep_rew_mean methodology changed across versions. v1 uses SB3 episode buffer (draw=0). v2 introduced a draw penalty (-0.1) in the reward function, which depresses ep_rew_mean values: the apparent lack of improvement in v2 may partly reflect frequent draws being penalised rather than genuine regression, making v2 harder to evaluate fairly. v3 switches to 15 post-run evaluation games (win=+1, draw=0, loss=-1) from ~3M timesteps. Values are not directly comparable across versions due to this. vs-Random scores near 0 often mean the agent draws without converting wins; after endgame curriculum, expect draw rate to fall and wins to rise._
+
+_v4 vs Minimax looks much worse than v3 (~-1.0 vs ~-0.6) but the benchmark opponent changed, not just the agent. v4's Minimax uses alpha-beta pruning, scores checkmates at the search horizon instead of material, and random tie-breaking — so it converts won positions and no longer shuffles into draws. That pushes evaluation scores toward -1.0 even when the RL agent is at a similar skill level. v3's softer score partly reflected the old Minimax failing to deliver mate._
 
 ---
 
