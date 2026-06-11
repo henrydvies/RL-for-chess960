@@ -106,7 +106,7 @@ def plot_training(model_folder):
         )
         
         ax.axvline(
-            x=3000000,
+            x=7166448,
             color="gray",
             linestyle="--",
             linewidth=0.8,

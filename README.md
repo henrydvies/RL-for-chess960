@@ -30,12 +30,17 @@ Chess960 randomises the back rank piece positions across 960 possible configurat
 RL-FOR-Chess960/
 ├── game/
 │   ├── environment.py          # Gym-compatible Chess960 environment
-│   └── board_representation.py # Board to tensor conversion (8x8x20)
+│   ├── board_representation.py # Board to tensor conversion (8x8x20)
+│   └── endgame_positions.py    # Random KQ/KR vs K positions for curriculum
 ├── engines/
 │   ├── random/                 # Random agent
 │   ├── minimax/                # Minimax agent with material evaluation
 │   ├── stockfish/              # Stockfish wrapper agent
-│   └── rl/                     # PPO-based RL agent, policy network, training
+│   ├── mcts/
+│   │   └── search.py           # PUCT MCTS (policy prior + value leaf eval)
+│   └── rl/                     # PPO agent, policy network, MCTS rollouts, training
+│       ├── maskable_ppo_mcts.py
+│       └── batched_policy_value.py
 ├── evaluation/
 │   ├── elo_tracker.py          # Elo rating tracking across agents
 │   ├── evaluator.py            # Game-playing evaluation loop
@@ -86,7 +91,7 @@ The agent is trained using a staged curriculum:
 3. **Stockfish (depth 1)** — learns from a tactically consistent opponent
 4. **Self-play** — develops emergent strategy through iterative improvement
 
-Training metrics (ep_rew_mean) and Elo ratings are logged per run and updated automatically.
+Training metrics (ep_rew_mean) and Elo ratings are logged per run and updated automatically. When MCTS is enabled, the learner and self-play opponent both search during rollouts; baseline opponents (Random, Minimax, Stockfish) do not.
 
 ---
 
@@ -118,7 +123,7 @@ v2 training plateaued completely: ep_rew_mean vs Minimax stayed flat at ~-0.88 o
 
 ## Improvements in v4
 
-v3 showed slow learning improvements and was slow to run, it may have performed well but did not recieve as much training. Improvements in v4 were focused on optimisation and improvements.
+v3 showed slow learning improvements and was slow to run; it may have performed well but did not receive as much training. Improvements in v4 were focused on optimisation and architecture.
 
 - **AlphaZero-style action encoding (8x8x73)** — replaced the 64x64 from/to encoding with 73 movement planes per from-square (direction x distance, knight jumps, underpromotions). Geometrically similar moves now share structure, and underpromotion is expressible for the first time.
 - **Spatial policy head** — replaced the dense policy bottleneck (flatten → linear → logits) with a 1x1 convolution producing the 8x8x73 logits directly. Board geometry is preserved all the way to the output and the head has far fewer parameters.
@@ -128,9 +133,22 @@ v3 showed slow learning improvements and was slow to run, it may have performed 
 - **Single `learn()` per phase** — the trainer no longer tears down and reloads the model every 50k steps. Checkpointing, evaluation, and self-play opponent reloading now run through a callback, fixing temperature decay resetting each chunk and deleting a whole class of reload bugs.
 - **Claimable draws enforced** — `board.outcome(claim_draw=True)`, so threefold repetition and the fifty-move rule actually end games instead of episodes dragging to fivefold/75-move auto-draws.
 - **Loud load failures** — a missing model path now raises `FileNotFoundError` instead of silently continuing with random weights (the failure mode that invalidated v1's self-play).
-- **Temperature restricted to self-play** — random opponent moves no longer pollute the Minimax/Stockfish benchmark signal.
+- **Temperature restricted to self-play** — random opponent moves no longer pollute the Minimax/Stockfish benchmark signal (disabled entirely when MCTS is active).
 - **Misc fixes** — Stockfish process leak in the evaluation loop, dead turn-indicator plane, curriculum threshold mismatch, Minimax alpha-beta pruning with correct checkmate scoring at the horizon.
-- **Endgame curriculum** — training episodes start from random KQ/KR vs K positions (~40% early, decaying to ~15% over 4k episodes per worker) so the agent learns checkmate without material reward shaping. Evaluation games remain full Chess960. _This was implimented after roughly 4 million timesteps._
+- **Endgame curriculum** — training episodes start from random KQ/KR vs K positions (~40% early, decaying to ~15% over 4k episodes per worker) so the agent learns checkmate without material reward shaping. Evaluation games remain full Chess960. _Implemented after roughly 4 million timesteps._
+
+---
+
+## Improvements — MCTS (from ~7.17M timesteps)
+
+Pure PPO struggled to convert wins (vs Random stayed near 0 — mostly draws). MCTS adds lookahead using the existing v4 policy and value head; the same checkpoint loads and training continues rather than restarting.
+
+- **PUCT MCTS** — policy logits as move priors, value head as leaf evaluator; illegal moves masked throughout search (`engines/mcts/search.py`).
+- **Training rollouts** — `MaskablePPO_MCTS` selects learner actions with 25 sims per move during all curriculum phases; self-play opponent searches too via `MCTSOpponentWrapper`.
+- **Batched inference** — parallel vec envs batch policy/value forward passes across concurrent searches (`batched_policy_value.py`).
+- **Eval and PGN** — RL agent uses MCTS in benchmark games (deterministic root); Random/Minimax/Stockfish unchanged. `self_play_game_pgn.py` searches by default.
+- **Temperature off with MCTS** — when search is active, self-play temperature random moves and decay are disabled.
+- **Still PPO** — not full AlphaZero; no training on MCTS visit-count policy targets yet.
 
 ---
 
@@ -142,9 +160,9 @@ v3 showed slow learning improvements and was slow to run, it may have performed 
 | **vs Minimax**   | <img src="visualisation/rl_agent_v1/MinimaxAgent.png" width="300"/>   | <img src="visualisation/rl_agent_v2/MinimaxAgent.png" width="300"/>   | <img src="visualisation/rl_agent_v3/MinimaxAgent.png" width="300"/>   | <img src="visualisation/rl_agent_v4/MinimaxAgent.png" width="300"/>   |
 | **vs Stockfish** | <img src="visualisation/rl_agent_v1/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v2/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v3/StockfishAgent.png" width="300"/> | <img src="visualisation/rl_agent_v4/StockfishAgent.png" width="300"/> |
 
-_Graphs show mean episode reward over total timesteps trained. Orange line is rolling average. Above 0 = net positive reward._
+_Graphs show mean episode reward over total timesteps trained. Orange line is rolling average. Above 0 = net positive reward. v4 graphs mark MCTS introduction at 7,166,448 timesteps._
 
-_Note: ep_rew_mean methodology changed across versions. v1 uses SB3 episode buffer (draw=0). v2 introduced a draw penalty (-0.1) in the reward function, which depresses ep_rew_mean values: the apparent lack of improvement in v2 may partly reflect frequent draws being penalised rather than genuine regression, making v2 harder to evaluate fairly. v3 switches to 15 post-run evaluation games (win=+1, draw=0, loss=-1) from ~3M timesteps. Values are not directly comparable across versions due to this. vs-Random scores near 0 often mean the agent draws without converting wins; after endgame curriculum, expect draw rate to fall and wins to rise._
+_Note: ep_rew_mean methodology changed across versions. v1 uses SB3 episode buffer (draw=0). v2 introduced a draw penalty (-0.1) in the reward function, which depresses ep_rew_mean values: the apparent lack of improvement in v2 may partly reflect frequent draws being penalised rather than genuine regression, making v2 harder to evaluate fairly. v3 switches to post-run evaluation games (win=+1, draw=0, loss=-1) from ~3M timesteps. From ~7.17M timesteps the RL agent also uses MCTS (25 sims) during evaluation. Values are not directly comparable across versions due to this. vs-Random scores near 0 often mean the agent draws without converting wins._
 
 _v4 vs Minimax looks much worse than v3 (~-1.0 vs ~-0.6) but the benchmark opponent changed, not just the agent. v4's Minimax uses alpha-beta pruning, scores checkmates at the search horizon instead of material, and random tie-breaking — so it converts won positions and no longer shuffles into draws. That pushes evaluation scores toward -1.0 even when the RL agent is at a similar skill level. v3's softer score partly reflected the old Minimax failing to deliver mate._
 
@@ -155,7 +173,7 @@ _v4 vs Minimax looks much worse than v3 (~-1.0 vs ~-0.6) but the benchmark oppon
 - Win: **+1 + (200-move_count)\* 0.001**
 - Loss: **-1**
 - Draw: **-0.1**
-- Illegal move: \*_-1_
+- Illegal move: **-1**
 - Midgame move: **0**
 
 Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avoid encoding human chess knowledge into the agent. The goal is purely emergent learning.
@@ -174,13 +192,19 @@ Reward shaping (e.g. material advantage bonuses) is intentionally omitted to avo
 
 **Stockfish at depth 1 only** — single difficulty level keeps ep_rew_mean as a clean benchmark metric. Mixed difficulties would mask the actual benchmark with easier wins.
 
+**MCTS during training** — search is wired into rollout collection and self-play (25 sims by default), not bolted on at inference only. Eval uses the same search for the RL agent so benchmarks reflect play strength with search. Same v4 checkpoint loads; no architecture change.
+
+**MCTS replaces temperature** — when search is active, self-play temperature random moves are disabled.
+
 ---
 
 ## Known Limitations
 
-- **Endgame conversion** — the agent struggles to convert winning endgames, often drawing by repetition due to sparse rewards.
+- **Endgame conversion** — improving with endgame curriculum and MCTS, but full-game conversion remains hard under sparse rewards.
 - **Training scale** — significantly below production RL chess systems (AlphaZero used ~56M timesteps on 5,000 TPUs).
-- **No MCTS** — inference uses greedy policy sampling rather than Monte Carlo Tree Search, limiting tactical depth at play time.
+- **Low MCTS sim count** — 25 sims per move on a laptop; production systems use hundreds to thousands.
+- **Not full AlphaZero training** — still MaskablePPO updates; no policy distillation from MCTS visit counts yet.
+- **Throughput** — MCTS slows sample collection vs greedy PPO rollouts.
 
 ---
 
@@ -204,17 +228,23 @@ pytest
 python -m engines.rl.train
 ```
 
+MCTS is on by default (`MCTS_SIMS_TRAIN=25` in `engines/rl/train.py`). Set to `0` to revert to greedy PPO rollouts.
+
 ### Play a game (outputs PGN for lichess/chess.com analysis)
 
 ```bash
 python self_play_game_pgn.py
 ```
 
+Uses MCTS by default for RL moves. Set `n_sims=0` in the script for greedy policy-only play.
+
 ### Plot training curves
 
 ```bash
 python -m evaluation.plot_training --model models/rl_agent_v4
 ```
+
+Graphs include a vertical "MCTS introduced" marker at 7,166,448 timesteps.
 
 ---
 
@@ -230,11 +260,11 @@ python -m evaluation.plot_training --model models/rl_agent_v4
 
 ### Phase 3 — RL Agent
 
-- MaskablePPO with custom CNN policy, action masking, self-play loop
+- MaskablePPO with custom ResNet policy, action masking, self-play loop, MCTS rollouts
 
 ### Phase 4 — Training and Evaluation
 
-- Elo tracking, Stockfish benchmarking, training curves, per-run logging
+- Elo tracking, Stockfish benchmarking, training curves, per-run logging, MCTS eval/play
 
 ### Phase 5 — Interactive Play (planned)
 
@@ -246,5 +276,6 @@ python -m evaluation.plot_training --model models/rl_agent_v4
 
 - **Reward shaping** — small intermediate rewards for material gain to speed up tactical learning while preserving the emergent learning premise
 - **Longer survival reward** — rewarding the agent for surviving more moves to discourage early collapse
-- **MCTS at inference** — replacing greedy policy sampling with Monte Carlo Tree Search for stronger play at inference time without retraining
+- **AlphaZero-style policy targets** — train on MCTS visit distributions rather than PPO on search-selected actions alone
+- **Scale MCTS sim count** — 50–800 sims if compute allows
 - **Meta-learning** — training a reward function that maximises learning speed rather than hand-designing rewards, inspired by the idea of self-improving reward mechanisms
