@@ -32,3 +32,6 @@ models/**/*.zip
 wandb/
 
 stockfish_exe/
+
+# For a automated task to run everyday to help get timesteps in
+run_training_window.py 
