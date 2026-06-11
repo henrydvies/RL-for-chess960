@@ -78,6 +78,12 @@ class ChessEnvironment(gym.Env):
         mask = action_masks_helper(self.board)
         return mask
 
+    def get_board(self):
+        """
+        Return a copy of the live board for MCTS rollout collection.
+        """
+        return self.board.copy()
+
     def _current_endgame_probability(self):
         if self.endgame_probability <= 0:
             return 0.0
