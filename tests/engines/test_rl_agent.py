@@ -4,6 +4,7 @@ Tests for rlAgent in engines/rl/rl_agent.py
 import chess
 import numpy as np
 import pytest
+from unittest.mock import patch
 from game.environment import ChessEnvironment
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
@@ -80,6 +81,48 @@ def test_take_turn_legal_chess960(agent):
     board = chess.Board.from_chess960_pos(42)
     move = agent.take_turn(board)
     assert move in board.legal_moves
+
+
+## Testing take_turn with MCTS
+
+def test_take_turn_n_sims_zero_skips_search(agent):
+    """
+    n_sims=0 should use greedy predict without calling MCTS
+    """
+    board = chess.Board()
+    with patch("engines.rl.rl_agent.mcts_search") as mock_search:
+        move = agent.take_turn(board, n_sims=0)
+        mock_search.assert_not_called()
+    assert move in board.legal_moves
+
+
+def test_take_turn_mcts_returns_legal_move(agent):
+    """
+    take_turn with search should return a legal move
+    """
+    board = chess.Board()
+    move = agent.take_turn(board, n_sims=8, root_deterministic=True)
+    assert move in board.legal_moves
+
+
+def test_take_turn_mcts_legal_as_black(agent):
+    """
+    MCTS take_turn should return a legal move when black is to move
+    """
+    board = chess.Board()
+    board.push_san("e4")
+    move = agent.take_turn(board, n_sims=8, root_deterministic=True)
+    assert move in board.legal_moves
+
+
+def test_take_turn_mcts_finds_mate_in_one(agent):
+    """
+    MCTS should find a forced mate with enough sims
+    """
+    board = chess.Board("6k1/8/6KQ/8/8/8/8/8 w - - 0 1")
+    move = agent.take_turn(board, n_sims=50, root_deterministic=True)
+    board.push(move)
+    assert board.is_checkmate()
 
 
 ## Testing save and load

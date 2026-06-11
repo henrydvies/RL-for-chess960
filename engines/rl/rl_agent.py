@@ -2,6 +2,7 @@
 Reinforcement learning based engine.
 """
 from engines.rl.policy_network import PolicyNetwork, ChessPolicy
+from engines.mcts.search import mcts_search
 from game.board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
 from utils.action_masks import action_to_move
@@ -89,15 +90,24 @@ class rlAgent:
         priors = {int(action): float(prior) for action, prior in zip(legal, legal_probs)}
         return priors, float(value[0, 0].cpu())
 
-    def take_turn(self, board):
+    def take_turn(self, board, n_sims=0, c_puct=1.25, root_deterministic=True, rng=None):
         """
         Takes a turn: board tensor in, chess.Move out.
+        n_sims=0 uses greedy masked predict; n_sims>0 runs MCTS search.
         """
-        tensor_board = board_to_tensor(board)
-        masks = action_masks_helper(board)
-        # Get action 
-        action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0][0]
-        
-        # Decode network-frame action to a real-board move (handles mirroring and promotion)
+        if n_sims <= 0:
+            tensor_board = board_to_tensor(board)
+            masks = action_masks_helper(board)
+            action = self.model.predict(tensor_board[new_axis], action_masks=masks)[0][0]
+            return action_to_move(int(action), board)
+
+        action = mcts_search(
+            board,
+            self.get_policy_value,
+            n_sims,
+            c_puct=c_puct,
+            root_deterministic=root_deterministic,
+            rng=rng,
+        )
         return action_to_move(int(action), board)
         
