@@ -6,6 +6,8 @@ from game.board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
 from utils.action_masks import action_to_move
 from numpy import newaxis as new_axis
+import numpy as np
+import torch as th
 from sb3_contrib import MaskablePPO
 import os
 class rlAgent:
@@ -66,6 +68,27 @@ class rlAgent:
             custom_objects={"gamma": 0.995, "ent_coef": 0.01, "n_steps": self.model.n_steps},
         )
         
+    def get_policy_value(self, board):
+        """
+        Run one forward pass and return MCTS priors plus value for the side to move.
+        """
+        tensor_board = board_to_tensor(board)
+        masks = action_masks_helper(board)
+
+        obs = th.as_tensor(tensor_board.copy()).unsqueeze(0).float().to(self.model.device)
+        mask = th.as_tensor(masks).unsqueeze(0).to(self.model.device)
+
+        with th.no_grad():
+            value = self.model.policy.predict_values(obs)
+            dist = self.model.policy.get_distribution(obs, action_masks=mask)
+            probs = dist.distribution.probs[0].cpu().numpy()
+
+        legal = np.flatnonzero(masks)
+        legal_probs = probs[legal]
+        legal_probs = legal_probs / legal_probs.sum()
+        priors = {int(action): float(prior) for action, prior in zip(legal, legal_probs)}
+        return priors, float(value[0, 0].cpu())
+
     def take_turn(self, board):
         """
         Takes a turn: board tensor in, chess.Move out.

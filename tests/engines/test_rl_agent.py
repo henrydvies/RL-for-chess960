@@ -7,6 +7,7 @@ import pytest
 from game.environment import ChessEnvironment
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
+from utils.action_masks import action_to_move
 
 
 @pytest.fixture
@@ -108,3 +109,56 @@ def test_load_missing_file_raises(agent, tmp_path):
     """
     with pytest.raises(FileNotFoundError):
         agent.load(str(tmp_path / "does_not_exist"))
+
+
+## Testing get_policy_value
+
+def test_get_policy_value_priors_sum_to_one(agent):
+    """
+    Priors over legal moves should sum to 1
+    """
+    board = chess.Board()
+    priors, _ = agent.get_policy_value(board)
+    assert abs(sum(priors.values()) - 1.0) < 1e-5
+
+
+def test_get_policy_value_only_legal_actions(agent):
+    """
+    Priors should only be returned for legal actions
+    """
+    board = chess.Board()
+    priors, _ = agent.get_policy_value(board)
+    legal = {move for move in board.legal_moves}
+    for action in priors:
+        assert action_to_move(action, board) in legal
+
+
+def test_get_policy_value_returns_scalar(agent):
+    """
+    Value should be a plain float
+    """
+    board = chess.Board()
+    _, value = agent.get_policy_value(board)
+    assert isinstance(value, float)
+
+
+def test_get_policy_value_as_black(agent):
+    """
+    get_policy_value should work when black is to move
+    """
+    board = chess.Board()
+    board.push_san("e4")
+    priors, value = agent.get_policy_value(board)
+    assert abs(sum(priors.values()) - 1.0) < 1e-5
+    assert isinstance(value, float)
+
+
+def test_get_policy_value_chess960(agent):
+    """
+    get_policy_value should work from a Chess960 starting position
+    """
+    board = chess.Board.from_chess960_pos(42)
+    priors, value = agent.get_policy_value(board)
+    assert len(priors) == len(list(board.legal_moves))
+    assert abs(sum(priors.values()) - 1.0) < 1e-5
+    assert isinstance(value, float)
