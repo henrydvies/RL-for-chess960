@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from engines.minimax.minimax_agent import MinimaxAgent
 from engines.random.random_agent import RandomAgent
+from engines.stockfish.stockfish_agent import StockfishAgent
 from engines.rl import train as train_module
 from engines.rl.train import run_benchmark_suite, _update_elo_from_game
 from evaluation.elo_tracker import EloTracker

@@ -60,7 +60,7 @@ def test_mcts_sims_zero_uses_default_rollouts():
         verbose=0,
         device="cpu",
     )
-    with patch("engines.rl.maskable_ppo_mcts.mcts_search") as mock_search:
+    with patch("engines.rl.batched_policy_value.mcts_search") as mock_search:
         model.learn(total_timesteps=4)
         mock_search.assert_not_called()
     env.close()

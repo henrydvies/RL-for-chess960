@@ -12,31 +12,7 @@ from stable_baselines3.common.vec_env import VecEnv
 from sb3_contrib.common.maskable.buffers import MaskableDictRolloutBuffer, MaskableRolloutBuffer
 from sb3_contrib.common.maskable.utils import get_action_masks, is_masking_supported
 
-from engines.mcts.search import mcts_search
-from game.board_representation import board_to_tensor
-from utils.action_masks import action_masks as action_masks_helper
-
-
-def board_policy_value(policy, device, board):
-    """
-    One forward pass: masked priors over legal moves and value for the side to move.
-    """
-    tensor_board = board_to_tensor(board)
-    masks = action_masks_helper(board)
-
-    obs = th.as_tensor(tensor_board.copy()).unsqueeze(0).float().to(device)
-    mask = th.as_tensor(masks).unsqueeze(0).to(device)
-
-    with th.no_grad():
-        value = policy.predict_values(obs)
-        dist = policy.get_distribution(obs, action_masks=mask)
-        probs = dist.distribution.probs[0].cpu().numpy()
-
-    legal = np.flatnonzero(masks)
-    legal_probs = probs[legal]
-    legal_probs = legal_probs / legal_probs.sum()
-    priors = {int(action): float(prior) for action, prior in zip(legal, legal_probs)}
-    return priors, float(value[0, 0].cpu())
+from engines.rl.batched_policy_value import board_policy_value, parallel_mcts_actions
 
 
 def _boards_from_env(env):
@@ -99,10 +75,8 @@ class MaskablePPO_MCTS(MaskablePPO):
             )
 
         callback.on_rollout_start()
-        policy_value_fn = lambda board: board_policy_value(self.policy, self.device, board)
         rng = np.random.default_rng(self.seed)
 
-        # Collect rollouts 
         while n_steps < n_rollout_steps:
             with th.no_grad():
                 obs_tensor = obs_as_tensor(self._last_obs, self.device)
@@ -112,20 +86,16 @@ class MaskablePPO_MCTS(MaskablePPO):
 
                 values = self.policy.predict_values(obs_tensor)
                 boards = _boards_from_env(env)
-                mcts_actions = []
-                # Run MCTS for each board
-                for board in boards:
-                    action = mcts_search(
-                        board,
-                        policy_value_fn,
-                        self.mcts_sims,
-                        c_puct=self.mcts_c_puct,
-                        root_deterministic=self.mcts_root_deterministic,
-                        rng=rng,
-                    )
-                    mcts_actions.append(action)
+                mcts_actions = parallel_mcts_actions(
+                    boards,
+                    self.policy,
+                    self.device,
+                    self.mcts_sims,
+                    self.mcts_c_puct,
+                    self.mcts_root_deterministic,
+                    int(rng.integers(0, 2**31 - 1)),
+                )
 
-                # Flatten the actions
                 actions = np.array(mcts_actions).reshape(-1, 1)
                 actions_tensor = th.as_tensor(actions).long().flatten().to(self.device)
                 _, log_probs, _ = self.policy.evaluate_actions(
@@ -138,7 +108,6 @@ class MaskablePPO_MCTS(MaskablePPO):
 
             self.num_timesteps += env.num_envs
 
-            # update locals and callback
             callback.update_locals(locals())
             if not callback.on_step():
                 return False
@@ -146,7 +115,6 @@ class MaskablePPO_MCTS(MaskablePPO):
             self._update_info_buffer(infos, dones)
             n_steps += 1
 
-            # update rewards for terminal states
             for idx, done in enumerate(dones):
                 if (
                     done
@@ -158,7 +126,6 @@ class MaskablePPO_MCTS(MaskablePPO):
                         terminal_value = self.policy.predict_values(terminal_obs)[0]
                     rewards[idx] += self.gamma * terminal_value
 
-            # Add the rollout to the buffer
             rollout_buffer.add(
                 self._last_obs,
                 actions,

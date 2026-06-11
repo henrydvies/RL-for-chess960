@@ -20,6 +20,7 @@ import random
 
 EVAL_EVERY_TIMESTEPS = 100000
 EVAL_N_GAMES = 10
+INCLUDE_SELF_PLAY_EVAL = False
 SELF_PLAY_TEMPERATURE = 0.2
 TEMPERATURE_DECAY_STEPS = 40000
 N_ENVS = 8
@@ -171,7 +172,7 @@ def run_benchmark_suite(
     model_folder,
     *,
     n_games=EVAL_N_GAMES,
-    include_self_play=True,
+    include_self_play=INCLUDE_SELF_PLAY_EVAL,
     log_timesteps=0,
     logger=None,
     elo_tracker=None,
@@ -181,6 +182,9 @@ def run_benchmark_suite(
     """
     Run one evaluation pass vs standard benchmarks. Returns scores keyed by opponent class.
     Optionally logs to training_log.json and updates Elo from the same games.
+
+    Self-play eval (agent vs its own checkpoint) is off by default; set
+    include_self_play=True or INCLUDE_SELF_PLAY_EVAL to re-enable.
     """
     if logger is None and model_folder is not None:
         logger = TrainingLogger(f"{model_folder}/training_log.json")
@@ -228,13 +232,12 @@ def run_benchmark_suite(
 
 def _evaluate_all_opponents(agent, model_folder, n_games=EVAL_N_GAMES):
     """
-    Evaluate the live agent vs all opponents and log as 0-timestep entries.
+    Evaluate the live agent vs benchmark opponents and log as 0-timestep entries.
     """
     run_benchmark_suite(
         agent,
         model_folder,
         n_games=n_games,
-        include_self_play=True,
         log_timesteps=0,
     )
 
@@ -474,7 +477,6 @@ if __name__=="__main__":
             eval_agent,
             "models/rl_agent_v4",
             n_games=EVAL_N_GAMES,
-            include_self_play=False,
             log_timesteps=0,
         )
         random_score = benchmark_scores[RandomAgent]

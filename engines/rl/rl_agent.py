@@ -2,7 +2,8 @@
 Reinforcement learning based engine.
 """
 from engines.rl.policy_network import PolicyNetwork, ChessPolicy
-from engines.rl.maskable_ppo_mcts import MaskablePPO_MCTS, board_policy_value
+from engines.rl.maskable_ppo_mcts import MaskablePPO_MCTS
+from engines.rl.batched_policy_value import board_policy_value
 from engines.mcts.search import mcts_search
 from game.board_representation import board_to_tensor
 from utils.action_masks import action_masks as action_masks_helper
