@@ -6,7 +6,7 @@ class StockfishAgent:
     """
     Stockfish agent
     """
-    def __init__(self, stockfish_path="stockfish_exe\stockfish-windows-x86-64-avx2.exe", level=1):
+    def __init__(self, stockfish_path=r"stockfish_exe\stockfish-windows-x86-64-avx2.exe", level=1):
         """
         Get the stockfish executable and set level
         """
