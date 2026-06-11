@@ -2,6 +2,7 @@
 Tests for MCTS self-play wiring in engines/rl/train.py
 """
 import chess
+from unittest.mock import MagicMock, patch
 
 from engines.random.random_agent import RandomAgent
 from engines.rl.train import MCTSOpponentWrapper, _make_env_fn, MCTS_SIMS_TRAIN
@@ -38,6 +39,39 @@ def test_make_env_fn_self_play_use_mcts():
     env = env_fn()
     assert env.use_mcts is True
     assert env.temperature == 0.0
+
+
+def test_run_training_enables_learner_mcts_for_non_self_play():
+    """
+    run_training should keep learner MCTS on for curriculum opponents too
+    """
+    from engines.rl import train as train_module
+
+    agent = MagicMock()
+    agent.model = MagicMock()
+    agent.model.device = "cpu"
+    agent.model.num_timesteps = 0
+
+    opponent = RandomAgent()
+
+    with patch.object(train_module, "SubprocVecEnv") as mock_vec_env, patch.object(
+        train_module, "PeriodicEvaluationCallback"
+    ), patch.object(train_module, "run_benchmark_suite"), patch.object(
+        agent, "load"
+    ), patch.object(
+        agent, "train"
+    ):
+        mock_vec_env.return_value.close = MagicMock()
+        train_module.run_training(
+            agent=agent,
+            opponent=opponent,
+            agent_model_folder="models/rl_agent_test",
+            total_timesteps=0,
+            self_play=False,
+        )
+
+    assert agent.mcts_sims == MCTS_SIMS_TRAIN
+    assert agent.mcts_root_deterministic is False
 
 
 def test_mcts_opponent_wrapper_load_delegates(tmp_path):
