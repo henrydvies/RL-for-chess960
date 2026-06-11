@@ -30,6 +30,7 @@ class ChessEnvironment(gym.Env):
         endgame_probability=0.0,
         endgame_probability_final=0.0,
         endgame_decay_episodes=0,
+        use_mcts=False,
     ):
         # 960 position seed random by default to ensure always trained on random chess960 setup.
         self.board = chess.Board.from_chess960_pos(pos_seed())
@@ -59,6 +60,8 @@ class ChessEnvironment(gym.Env):
         self.temperature = temperature
         # Per-env steps over which temperature decays to 0.05. 
         self.temperature_decay_steps = temperature_decay_steps
+        # Random opponent moves are disabled when MCTS handles exploration
+        self.use_mcts = use_mcts
 
         # Endgame curriculum: start high while the agent draw-farms, decay as mating improves
         self.endgame_probability = endgame_probability
@@ -137,13 +140,17 @@ class ChessEnvironment(gym.Env):
 
         if not(self.game_over):     
             # Take opponent move, with chance for random move (temperature > 0 in self-play only)
-            if self.temperature > 0 and random.random() < self.temperature:
+            if (
+                not self.use_mcts
+                and self.temperature > 0
+                and random.random() < self.temperature
+            ):
                 opponent_move = self.random_agent.take_turn(self.board)
             else:
                 opponent_move = self.opponent.take_turn(self.board)
             
             # Linear decay from initial_temperature to 0.05 over temperature_decay_steps
-            if self.initial_temperature > 0:
+            if not self.use_mcts and self.initial_temperature > 0:
                 self.temperature = max(0.05, self.initial_temperature - (self.step_counter / self.temperature_decay_steps) * (self.initial_temperature - 0.05))
             # Make opponent move
             self.board.push(opponent_move)

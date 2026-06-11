@@ -8,6 +8,7 @@ from unittest.mock import patch
 from game.environment import ChessEnvironment
 from engines.random.random_agent import RandomAgent
 from engines.rl.rl_agent import rlAgent
+from engines.rl.maskable_ppo_mcts import MaskablePPO_MCTS
 from utils.action_masks import action_to_move
 
 
@@ -42,6 +43,40 @@ def test_agent_has_model(agent):
     rlAgent should have a model attribute after instantiation
     """
     assert agent.model is not None
+
+
+def test_agent_uses_mcts_ppo(agent):
+    """
+    rlAgent should wrap MaskablePPO_MCTS for MCTS-capable training rollouts
+    """
+    assert isinstance(agent.model, MaskablePPO_MCTS)
+    assert agent.model.mcts_sims == 0
+
+
+def test_agent_mcts_training_rollout(environment):
+    """
+    rlAgent with mcts_sims>0 should complete a short training rollout
+    """
+    from stable_baselines3.common.vec_env import DummyVecEnv
+
+    vec_env = DummyVecEnv([lambda: environment])
+    agent = rlAgent(vec_env, n_steps=4, device="cpu", mcts_sims=2)
+    agent.train(total_timesteps=4)
+    vec_env.close()
+
+
+def test_load_restores_mcts_settings(agent, tmp_path):
+    """
+    load should restore weights into MaskablePPO_MCTS with current MCTS settings
+    """
+    agent.mcts_sims = 8
+    agent.mcts_c_puct = 1.5
+    path = str(tmp_path / "test_model")
+    agent.save(model_path=path)
+    agent.load(path)
+    assert isinstance(agent.model, MaskablePPO_MCTS)
+    assert agent.model.mcts_sims == 8
+    assert agent.model.mcts_c_puct == 1.5
 
 
 ## Testing take_turn

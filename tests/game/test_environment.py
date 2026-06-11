@@ -4,6 +4,7 @@ Tests for ChessEnvironment in environment.py
 import chess
 import numpy as np
 import pytest
+from unittest.mock import patch
 from game.environment import ChessEnvironment
 from engines.random.random_agent import RandomAgent
 from utils.action_masks import move_to_action
@@ -75,6 +76,36 @@ def test_endgame_curriculum_resets_step_counter():
     env.step_counter = 50
     env.reset()
     assert env.step_counter == 0
+
+
+## Testing MCTS disables temperature
+
+def test_mcts_disables_temperature_random_moves():
+    """
+    use_mcts=True should never take random opponent moves even at high temperature
+    """
+    class TrackingOpponent:
+        def take_turn(self, board):
+            return list(board.legal_moves)[0]
+
+    env = ChessEnvironment(TrackingOpponent(), temperature=1.0, use_mcts=True)
+    env.reset()
+    move = list(env.board.legal_moves)[0]
+    with patch.object(env.random_agent, "take_turn") as mock_random:
+        env.step(move_to_action(move))
+        mock_random.assert_not_called()
+
+
+def test_mcts_skips_temperature_decay():
+    """
+    use_mcts=True should leave temperature unchanged across steps
+    """
+    env = ChessEnvironment(RandomAgent(), temperature=0.2, use_mcts=True)
+    env.reset()
+    start_temp = env.temperature
+    move = list(env.board.legal_moves)[0]
+    env.step(move_to_action(move))
+    assert env.temperature == start_temp
 
 
 ## Testing illegal moves
