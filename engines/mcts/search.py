@@ -100,6 +100,23 @@ def _backup(path, value):
         value = -value
 
 
+def _cached_policy_value(get_policy_value):
+    """
+    Wrap get_policy_value with a per-search transposition cache keyed by board state.
+    """
+    cache = {}
+
+    def cached(board):
+        key = board._transposition_key()
+        result = cache.get(key)
+        if result is None:
+            result = get_policy_value(board)
+            cache[key] = result
+        return result
+
+    return cached
+
+
 def mcts_search(
     board,
     get_policy_value,
@@ -121,6 +138,7 @@ def mcts_search(
     if rng is None:
         rng = np.random.default_rng()
 
+    get_policy_value = _cached_policy_value(get_policy_value)
     root = _MCTSNode(board)
 
     for _ in range(n_sims):

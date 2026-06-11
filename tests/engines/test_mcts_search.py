@@ -5,7 +5,7 @@ import chess
 import numpy as np
 import pytest
 from utils.action_masks import action_masks, action_to_move, move_to_action
-from engines.mcts.search import _terminal_value, mcts_search
+from engines.mcts.search import _cached_policy_value, _terminal_value, mcts_search
 
 
 def _uniform_policy_value(board):
@@ -167,3 +167,40 @@ def test_mcts_stochastic_root_returns_legal_move():
         rng=rng,
     )
     assert action_to_move(action, board) in board.legal_moves
+
+
+def test_transposition_cache_reuses_policy_value():
+    """
+    Repeated positions in one search should only evaluate the network once per key.
+    """
+    call_count = {"n": 0}
+
+    def counting_policy_value(board):
+        call_count["n"] += 1
+        return _uniform_policy_value(board)
+
+    cached = _cached_policy_value(counting_policy_value)
+    board = chess.Board()
+    cached(board)
+    cached(board)
+    assert call_count["n"] == 1
+
+
+def test_transposition_cache_different_positions_evaluated_separately():
+    """
+    Distinct board states should each miss the cache once.
+    """
+    call_count = {"n": 0}
+
+    def counting_policy_value(board):
+        call_count["n"] += 1
+        return _uniform_policy_value(board)
+
+    cached = _cached_policy_value(counting_policy_value)
+    board_a = chess.Board()
+    board_b = chess.Board()
+    board_b.push(chess.Move.from_uci("e2e4"))
+
+    cached(board_a)
+    cached(board_b)
+    assert call_count["n"] == 2
