@@ -27,7 +27,7 @@ N_ENVS = 8
 ENDGAME_CURRICULUM_PROB = 0.4
 ENDGAME_CURRICULUM_PROB_FINAL = 0.15
 ENDGAME_CURRICULUM_DECAY_EPISODES = 4000
-MCTS_SIMS_TRAIN = 25
+MCTS_SIMS_TRAIN = 15
 MCTS_C_PUCT = 1.25
 BENCHMARK_OPPONENT_CLASSES = (RandomAgent, MinimaxAgent, StockfishAgent)
 
@@ -487,7 +487,7 @@ if __name__=="__main__":
         # This also means that early on when it arguably needs more random/ minimax it does it more frequently due to less self play.
         opponents_added = sum([
             random_score <= 0.5,
-            -0.7 <= minimax_score <= 0.6,
+            -1 <= minimax_score <= 0.6,
             stockfish_score > -0.8
         ])
         self_play_timesteps = 250000 - (50000 * opponents_added)
@@ -499,7 +499,7 @@ if __name__=="__main__":
         if random_score <= 0.5:
             main_config.insert(0, (RandomAgent, 50000, None))
         
-        if -0.7 <= minimax_score <= 0.6:
+        if -1 <= minimax_score <= 0.6:
             main_config.insert(0, (MinimaxAgent, 50000, None))
         
         if stockfish_score > -0.8:
