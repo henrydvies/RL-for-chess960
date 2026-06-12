@@ -1,6 +1,7 @@
 """
 Tests for unified benchmark evaluation in engines/rl/train.py
 """
+import pytest
 from unittest.mock import MagicMock, patch
 
 from engines.minimax.minimax_agent import MinimaxAgent
@@ -60,6 +61,41 @@ def test_run_training_skips_end_eval_when_callback_just_ran():
             self_play=False,
         )
 
+    mock_suite.assert_not_called()
+
+
+def test_run_training_saves_and_closes_on_keyboard_interrupt():
+    """
+    Ctrl+C during learn() should checkpoint, close workers, and skip end-of-phase eval.
+    """
+    agent = MagicMock()
+    agent.model = MagicMock()
+    agent.model.device = "cpu"
+    agent.model.num_timesteps = 12000
+
+    eval_callback = MagicMock()
+    eval_callback.last_eval_at_timesteps = None
+    eval_callback.checkpoint = MagicMock()
+
+    with patch.object(train_module, "SubprocVecEnv") as mock_vec_env, patch.object(
+        train_module, "PeriodicEvaluationCallback", return_value=eval_callback
+    ), patch.object(train_module, "run_benchmark_suite") as mock_suite, patch.object(
+        agent, "load"
+    ), patch.object(
+        agent, "train", side_effect=KeyboardInterrupt
+    ):
+        mock_vec_env.return_value.close = MagicMock()
+        with pytest.raises(KeyboardInterrupt):
+            train_module.run_training(
+                agent=agent,
+                opponent=RandomAgent(),
+                agent_model_folder="models/rl_agent_test",
+                total_timesteps=50000,
+                self_play=False,
+            )
+
+    eval_callback.checkpoint.assert_called_once_with(12000)
+    mock_vec_env.return_value.close.assert_called_once()
     mock_suite.assert_not_called()
 
 

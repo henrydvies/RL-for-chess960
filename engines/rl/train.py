@@ -300,20 +300,25 @@ class PeriodicEvaluationCallback(BaseCallback):
 
         self.agent.save(self.agent_model_path)
 
-        # Colour episode counters summed across all worker envs
-        colour_totals = {
-            "white": sum(self.environment.get_attr("white_episodes")),
-            "black": sum(self.environment.get_attr("black_episodes")),
-        }
-        colour_counts = {
-            "white": colour_totals["white"] - self.last_colour_counts["white"],
-            "black": colour_totals["black"] - self.last_colour_counts["black"],
-        }
-        self.last_colour_counts = colour_totals
+        colour_counts = None
+        try:
+            # Worker processes may be shutting down after Ctrl+C.
+            colour_totals = {
+                "white": sum(self.environment.get_attr("white_episodes")),
+                "black": sum(self.environment.get_attr("black_episodes")),
+            }
+            colour_counts = {
+                "white": colour_totals["white"] - self.last_colour_counts["white"],
+                "black": colour_totals["black"] - self.last_colour_counts["black"],
+            }
+            self.last_colour_counts = colour_totals
+        except Exception:
+            pass
 
-        logger = TrainingLogger(f"{self.model_folder}/training_log.json")
-        logger.update_log(chunk_timesteps, self.opponent, None, colour_counts)
-        logger.save()
+        if chunk_timesteps > 0:
+            logger = TrainingLogger(f"{self.model_folder}/training_log.json")
+            logger.update_log(chunk_timesteps, self.opponent, None, colour_counts)
+            logger.save()
 
 
 def run_training(
@@ -385,14 +390,27 @@ def run_training(
         wandb.init(project="rl-chess960", sync_tensorboard=True)
         callbacks.append(WandbCallback())
 
+    interrupted = False
     try:
         agent.train(total_timesteps, callback=callbacks)
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\nTraining interrupted (Ctrl+C). Saving checkpoint and closing workers...")
     finally:
-        # Checkpoint and log whatever is left since the last periodic checkpoint
-        eval_callback.checkpoint(agent.model.num_timesteps)
-        vec_env.close()
+        try:
+            eval_callback.checkpoint(agent.model.num_timesteps)
+        except Exception as exc:
+            print(f"Checkpoint failed ({exc}); attempting model save only.")
+            agent.save(agent_model_path)
+        try:
+            vec_env.close()
+        except Exception as exc:
+            print(f"Warning: could not close vector env cleanly: {exc}")
         if use_wandb:
             wandb.finish()
+
+    if interrupted:
+        raise KeyboardInterrupt
 
     final_timesteps = agent.model.num_timesteps
     if eval_callback.last_eval_at_timesteps != final_timesteps:
@@ -433,16 +451,21 @@ def handle_training(agent_class=rlAgent, config=[(RandomAgent, 0, None), (Minima
                 chosen = random.choice(snapshots).replace(".zip", "")
                 chosen_opponent_path = f"{model_path}/snapshots/{chosen}"
 
-        run_training(
-            agent=agent,
-            opponent=opponent_instance,
-            agent_model_folder=model_path,
-            opponent_agent_model_path=chosen_opponent_path,
-            total_timesteps=timesteps,
-            use_wandb=use_wandb,
-            self_play=self_play,
-            elo_tracker=elo_tracker,
-        )
+        try:
+            run_training(
+                agent=agent,
+                opponent=opponent_instance,
+                agent_model_folder=model_path,
+                opponent_agent_model_path=chosen_opponent_path,
+                total_timesteps=timesteps,
+                use_wandb=use_wandb,
+                self_play=self_play,
+                elo_tracker=elo_tracker,
+            )
+        except KeyboardInterrupt:
+            if hasattr(opponent_instance, "close"):
+                opponent_instance.close()
+            raise
 
         if self_play:
             elo_tracker = evaluate(RandomAgent(), MinimaxAgent(), n_games=10, tracker=elo_tracker)
@@ -464,45 +487,48 @@ if __name__=="__main__":
     """
 
 
-    while True:
-        # Dynamic training designed to be ran and left, only plays opponent if it will learn from it, so no stockfish when it just looses every game etc
-        eval_agent = rlAgent(ChessEnvironment(RandomAgent()))
-        model_file = "models/rl_agent_v4/rl_agent_v4"
-        if os.path.exists(f"{model_file}.zip"):
-            eval_agent.load(model_file)
-        else:
-            print(f"No existing model at {model_file}.zip - evaluating fresh weights.")
-        
-        benchmark_scores = run_benchmark_suite(
-            eval_agent,
-            "models/rl_agent_v4",
-            n_games=EVAL_N_GAMES,
-            log_timesteps=0,
-        )
-        random_score = benchmark_scores[RandomAgent]
-        minimax_score = benchmark_scores[MinimaxAgent]
-        stockfish_score = benchmark_scores[StockfishAgent]
-        
-        # If more opponents then less time on self play for equal loop length
-        # This also means that early on when it arguably needs more random/ minimax it does it more frequently due to less self play.
-        opponents_added = sum([
-            random_score <= 0.7,
-            -1 <= minimax_score <= 0.6,
-            stockfish_score > -0.8
-        ])
-        self_play_timesteps = 250000 - (50000 * opponents_added)
-        
-        main_config = [
-            (rlAgent, self_play_timesteps, "models/rl_agent_v4"),
-        ]
-        
-        if random_score <= 0.7:
-            main_config.insert(0, (RandomAgent, 50000, None))
-        
-        if -1 <= minimax_score <= 0.6:
-            main_config.insert(0, (MinimaxAgent, 50000, None))
-        
-        if stockfish_score > -0.8:
-            main_config.append((StockfishAgent, 100000, None))
-        
-        handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v4")
+    model_file = "models/rl_agent_v4/rl_agent_v4"
+    try:
+        while True:
+            # Dynamic training designed to be ran and left, only plays opponent if it will learn from it, so no stockfish when it just looses every game etc
+            eval_agent = rlAgent(ChessEnvironment(RandomAgent()))
+            if os.path.exists(f"{model_file}.zip"):
+                eval_agent.load(model_file)
+            else:
+                print(f"No existing model at {model_file}.zip - evaluating fresh weights.")
+
+            benchmark_scores = run_benchmark_suite(
+                eval_agent,
+                "models/rl_agent_v4",
+                n_games=EVAL_N_GAMES,
+                log_timesteps=0,
+            )
+            random_score = benchmark_scores[RandomAgent]
+            minimax_score = benchmark_scores[MinimaxAgent]
+            stockfish_score = benchmark_scores[StockfishAgent]
+
+            # If more opponents then less time on self play for equal loop length
+            # This also means that early on when it arguably needs more random/ minimax it does it more frequently due to less self play.
+            opponents_added = sum([
+                random_score <= 0.7,
+                -1 <= minimax_score <= 0.6,
+                stockfish_score > -0.8
+            ])
+            self_play_timesteps = 250000 - (50000 * opponents_added)
+
+            main_config = [
+                (rlAgent, self_play_timesteps, "models/rl_agent_v4"),
+            ]
+
+            if random_score <= 0.7:
+                main_config.insert(0, (RandomAgent, 50000, None))
+
+            if -1 <= minimax_score <= 0.6:
+                main_config.insert(0, (MinimaxAgent, 50000, None))
+
+            if stockfish_score > -0.8:
+                main_config.append((StockfishAgent, 100000, None))
+
+            handle_training(agent_class=rlAgent, config=main_config, use_wandb=False, model_path="models/rl_agent_v4")
+    except KeyboardInterrupt:
+        print(f"\nStopped. Latest weights should be in {model_file}.zip")
