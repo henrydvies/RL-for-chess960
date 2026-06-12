@@ -23,11 +23,11 @@ EVAL_N_GAMES = 10
 INCLUDE_SELF_PLAY_EVAL = False
 SELF_PLAY_TEMPERATURE = 0.2
 TEMPERATURE_DECAY_STEPS = 40000
-N_ENVS = 8
+N_ENVS = 4
 ENDGAME_CURRICULUM_PROB = 0.4
 ENDGAME_CURRICULUM_PROB_FINAL = 0.15
 ENDGAME_CURRICULUM_DECAY_EPISODES = 4000
-MCTS_SIMS_TRAIN = 15
+MCTS_SIMS_TRAIN = 8
 MCTS_C_PUCT = 1.25
 BENCHMARK_OPPONENT_CLASSES = (RandomAgent, MinimaxAgent, StockfishAgent)
 
@@ -486,7 +486,7 @@ if __name__=="__main__":
         # If more opponents then less time on self play for equal loop length
         # This also means that early on when it arguably needs more random/ minimax it does it more frequently due to less self play.
         opponents_added = sum([
-            random_score <= 0.5,
+            random_score <= 0.7,
             -1 <= minimax_score <= 0.6,
             stockfish_score > -0.8
         ])
@@ -496,7 +496,7 @@ if __name__=="__main__":
             (rlAgent, self_play_timesteps, "models/rl_agent_v4"),
         ]
         
-        if random_score <= 0.5:
+        if random_score <= 0.7:
             main_config.insert(0, (RandomAgent, 50000, None))
         
         if -1 <= minimax_score <= 0.6:

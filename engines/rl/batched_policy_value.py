@@ -48,8 +48,14 @@ def board_policy_value_batch(policy, device, boards):
     results = []
     for i, masks in enumerate(masks_list):
         legal = np.flatnonzero(masks)
-        legal_probs = probs[i, legal]
-        legal_probs = legal_probs / legal_probs.sum()
+        if len(legal) == 0:
+            raise ValueError("board_policy_value_batch: no legal moves")
+        legal_probs = probs[i, legal].astype(np.float64, copy=False)
+        total = legal_probs.sum()
+        if total <= 0 or not np.isfinite(total):
+            legal_probs = np.full(len(legal), 1.0 / len(legal))
+        else:
+            legal_probs = legal_probs / total
         priors = {int(action): float(prior) for action, prior in zip(legal, legal_probs)}
         results.append((priors, float(values[i, 0].cpu())))
 
@@ -57,12 +63,13 @@ def board_policy_value_batch(policy, device, boards):
 
 
 class _PolicyValueRequest:
-    __slots__ = ("board", "priors", "value")
+    __slots__ = ("board", "priors", "value", "error")
 
     def __init__(self, board):
         self.board = board
         self.priors = None
         self.value = None
+        self.error = None
 
 
 class BatchedPolicyValueFn:
@@ -77,18 +84,22 @@ class BatchedPolicyValueFn:
         self.max_wait_s = max_wait_s
         self._cond = threading.Condition()
         self._pending = []
+        # One forward pass at a time: concurrent CUDA calls from MCTS threads deadlock.
+        self._forward_lock = threading.Lock()
 
     def __call__(self, board):
         request = _PolicyValueRequest(board)
         with self._cond:
             self._pending.append(request)
-            while request.priors is None:
+            while request.priors is None and request.error is None:
                 if len(self._pending) >= self.max_batch:
                     self._process_batch_locked()
                 else:
                     self._cond.wait(timeout=self.max_wait_s)
-                if request.priors is None and self._pending:
+                if request.priors is None and request.error is None and self._pending:
                     self._process_batch_locked()
+        if request.error is not None:
+            raise request.error
         return request.priors, request.value
 
     def _process_batch_locked(self):
@@ -99,14 +110,23 @@ class BatchedPolicyValueFn:
         self._pending = []
         boards = [request.board for request in batch]
         self._cond.release()
+        error = None
+        results = None
         try:
-            results = board_policy_value_batch(self.policy, self.device, boards)
+            with self._forward_lock:
+                results = board_policy_value_batch(self.policy, self.device, boards)
+        except Exception as exc:
+            error = exc
         finally:
             self._cond.acquire()
 
-        for request, (priors, value) in zip(batch, results):
-            request.priors = priors
-            request.value = value
+        if error is not None:
+            for request in batch:
+                request.error = error
+        else:
+            for request, (priors, value) in zip(batch, results):
+                request.priors = priors
+                request.value = value
         self._cond.notify_all()
 
 

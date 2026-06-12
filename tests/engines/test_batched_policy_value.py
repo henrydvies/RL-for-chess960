@@ -5,7 +5,9 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import chess
+import numpy as np
 import pytest
+import torch as th
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from engines.random.random_agent import RandomAgent
@@ -104,6 +106,50 @@ def test_parallel_mcts_actions_returns_one_action_per_board():
 
     assert actions == [7, 13]
     assert mock_search.call_count == 2
+
+
+def test_batched_policy_value_fn_propagates_batch_errors():
+    """
+    A failed batch forward pass must not leave other threads waiting forever.
+    """
+    batched_fn = BatchedPolicyValueFn(MagicMock(), "cpu", max_batch=4, max_wait_s=0.01)
+
+    def failing_batch(*_args):
+        raise RuntimeError("simulated GPU failure")
+
+    with patch(
+        "engines.rl.batched_policy_value.board_policy_value_batch",
+        side_effect=failing_batch,
+    ):
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(batched_fn, chess.Board.from_chess960_pos(i))
+                for i in range(4)
+            ]
+            for future in futures:
+                with pytest.raises(RuntimeError, match="simulated GPU failure"):
+                    future.result(timeout=5)
+
+
+def test_board_policy_value_batch_uniform_fallback_when_probs_are_zero(real_policy):
+    """
+    All-zero legal logits should fall back to uniform priors instead of NaNs.
+    """
+    policy, device = real_policy
+    board = chess.Board()
+
+    mock_probs = np.zeros((1, 4672), dtype=np.float32)
+    mock_dist = MagicMock()
+    mock_dist.distribution.probs.cpu.return_value.numpy.return_value = mock_probs
+
+    with patch.object(policy, "predict_values", return_value=th.tensor([[0.0]])), patch.object(
+        policy, "get_distribution", return_value=mock_dist
+    ):
+        priors, value = board_policy_value_batch(policy, device, [board])[0]
+
+    assert len(priors) > 0
+    assert sum(priors.values()) == pytest.approx(1.0)
+    assert all(np.isfinite(p) for p in priors.values())
 
 
 def test_parallel_mcts_actions_single_board_skips_thread_pool():
